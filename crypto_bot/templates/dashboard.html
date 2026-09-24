@@ -513,24 +513,26 @@
       ': моделите се обучават само с данни, известни към всеки момент, и прогнозират следващата стъпка.</p></div>' +
       '<div class="kpis">' +
         '<div class="kpi"><span class="label">Точност на ансамбъла</span><span class="value">' + pct(ens.accuracy) + '</span><span class="note">„винаги нагоре“: ' + pct(BT.always_up_accuracy) + '</span></div>' +
-        '<div class="kpi"><span class="label">Brier skill спрямо монета</span><span class="value ' + (ens.brier_skill > 0 ? "up-ink" : "down-ink") + '">' + (ens.brier_skill > 0 ? "+" : "−") + nf(3).format(Math.abs(ens.brier_skill)) + '</span><span class="note">над 0 = по-добре от 50/50</span></div>' +
+        '<div class="kpi"><span class="label">Brier skill спрямо базата</span><span class="value ' + (ens.brier_skill_base > 0 ? "up-ink" : "down-ink") + '">' + (ens.brier_skill_base > 0 ? "+" : "−") + nf(3).format(Math.abs(ens.brier_skill_base)) + '</span><span class="note">над 0 = по-добре от „винаги базовата честота“</span></div>' +
         '<div class="kpi"><span class="label">Попадения в коридор 68%</span><span class="value">' + pct(D.volatility.coverage_68) + '</span><span class="note">95% коридор: ' + pct(D.volatility.coverage_95) + '</span></div>' +
         '<div class="kpi"><span class="label">Стратегия по сигнала</span><span class="value ' + (S.total_return >= 0 ? "up-ink" : "down-ink") + '">' + pct(S.total_return, 1, true) + '</span><span class="note">купи-и-дръж: ' + pct(S.buy_and_hold_return, 1, true) + '</span></div>' +
       '</div>' +
+      '<p class="muted" style="font-size:12.5px"><strong>Тест за предимство' + (BT.has_edge ? ' – минат' : ' – неминат') + ':</strong> ' + esc(BT.edge_reason) + '</p>' +
       '<div class="panel"><div class="legend">' +
         '<span><i class="sw" style="background:var(--series-1)"></i>Стратегия по сигнала (long-only, такса ' + pct(S.fee, 2) + ')</span>' +
         '<span><i class="sw" style="background:var(--series-2)"></i>Купи и дръж</span>' +
       '</div><div class="chart" id="equity-chart"></div>' +
       '<p class="muted" style="font-size:12.5px">Sharpe ' + nf(2).format(S.sharpe) + ' · макс. просадка ' + pct(S.max_drawdown) + ' · ' + S.trades + ' сделки · в позиция ' + pct(S.exposure, 0) + ' от времето</p></div>';
 
-    var mt = '<div class="panel"><div class="table-wrap"><table><thead><tr><th>Модел</th><th>Точност</th><th>Brier</th><th>Skill</th><th>AUC</th><th>Уверени</th><th>Точност уверени</th><th>IC</th></tr></thead><tbody>';
+    function skillCell(v) { return '<td class="' + (v > 0 ? "up-ink" : "down-ink") + '">' + (v > 0 ? "+" : "−") + nf(3).format(Math.abs(v)) + '</td>'; }
+    var mt = '<div class="panel"><div class="table-wrap"><table><thead><tr><th>Модел</th><th>Точност</th><th>Brier</th><th>Skill</th><th>Skill база</th><th>AUC</th><th>p</th><th>Уверени</th><th>Точност уверени</th><th>IC</th></tr></thead><tbody>';
     BT.metrics.forEach(function (r) {
-      mt += '<tr' + (r.model === "ensemble" ? ' class="hl"' : "") + '><td>' + esc(r.label) + '</td><td>' + pct(r.accuracy) + '</td><td>' + nf(4).format(r.brier) +
-        '</td><td class="' + (r.brier_skill > 0 ? "up-ink" : "down-ink") + '">' + (r.brier_skill > 0 ? "+" : "−") + nf(3).format(Math.abs(r.brier_skill)) +
-        '</td><td>' + (r.auc == null ? "—" : nf(3).format(r.auc)) + '</td><td>' + r.confident_n + '</td><td>' + pct(r.confident_accuracy) +
+      mt += '<tr' + (r.model === "ensemble" ? ' class="hl"' : "") + '><td>' + esc(r.label) + '</td><td>' + pct(r.accuracy) + '</td><td>' + nf(4).format(r.brier) + '</td>' +
+        skillCell(r.brier_skill) + skillCell(r.brier_skill_base) +
+        '<td>' + (r.auc == null ? "—" : nf(3).format(r.auc)) + '</td><td>' + (r.auc_p == null ? "—" : nf(3).format(r.auc_p)) + '</td><td>' + r.confident_n + '</td><td>' + pct(r.confident_accuracy) +
         '</td><td>' + (r.return_ic == null ? "—" : nf(3).format(r.return_ic)) + '</td></tr>';
     });
-    mt += '</tbody></table></div><p class="muted" style="font-size:12.5px">' + BT.metrics[0].n + ' прогнози извън извадката. Brier: по-ниско е по-добре, 0,25 = монета. „Уверени“: вероятност извън 45–55%. IC: рангова корелация между очакваната и реалната доходност.</p></div>';
+    mt += '</tbody></table></div><p class="muted" style="font-size:12.5px">' + BT.metrics[0].n + ' прогнози извън извадката. Brier: по-ниско е по-добре, 0,25 = монета. Skill: спрямо монета; skill база: спрямо базовата честота на ръст, известна към момента. p: еднопосочен тест на Ман–Уитни дали AUC > 0,5. „Уверени“: вероятност извън 45–55%. IC: рангова корелация между очакваната и реалната доходност.</p></div>';
     html += mt + '</section>';
   }
 

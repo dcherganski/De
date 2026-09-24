@@ -204,12 +204,11 @@ class PredictionBot:
         thr = self.config.threshold
         has_edge = None
         if bt is not None:
-            ens = bt.metrics.loc["ensemble"]
-            has_edge = bool(ens["brier_skill"] > 0 and ens["auc"] > 0.5)
+            has_edge = bt.has_edge
             if not has_edge:
                 return (
                     "HOLD",
-                    "Моделите нямат доказано предимство в walk-forward теста (Brier skill ≤ 0 или AUC ≤ 0.5) — "
+                    f"Моделите нямат доказано предимство в walk-forward теста ({bt.edge_reason}) — "
                     "прогнозата за посока е само информативна.",
                     False,
                 )
