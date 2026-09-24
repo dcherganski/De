@@ -79,6 +79,8 @@ def to_payload(result: BotResult, history_bars: int = 120) -> dict:
         payload["backtest"] = {
             "metrics": metrics.to_dict(orient="records"),
             "always_up_accuracy": bt.metrics.attrs.get("always_up_accuracy"),
+            "has_edge": bt.has_edge,
+            "edge_reason": bt.edge_reason,
             "strategy": bt.strategy,
             "weights": bt.weights,
             "first_test": bt.predictions.index[0],
@@ -203,11 +205,13 @@ def format_text(result: BotResult) -> str:
         add("")
         add(f"Walk-forward бектест ({bt.predictions.index[0].date()} – {bt.predictions.index[-1].date()}, "
             f"{len(bt.predictions)} прогнози):")
-        add(f"  {'модел':<34} {'точност':>8} {'Brier':>7} {'skill':>7} {'AUC':>6}")
+        add(f"  {'модел':<34} {'точност':>8} {'Brier':>7} {'skill':>7} {'база':>7} {'AUC':>6} {'p':>6}")
         for name, row in bt.metrics.iterrows():
             add(f"  {MODEL_LABELS.get(name, name):<34} {_pct(row['accuracy']):>8} {row['brier']:>7.4f} "
-                f"{row['brier_skill']:>+7.3f} {row['auc']:>6.3f}")
-        add(f"  Базово ниво „винаги нагоре“: {_pct(bt.metrics.attrs.get('always_up_accuracy'))}")
+                f"{row['brier_skill']:>+7.3f} {row['brier_skill_base']:>+7.3f} {row['auc']:>6.3f} {row['auc_p']:>6.3f}")
+        add(f"  Базово ниво „винаги нагоре“: {_pct(bt.metrics.attrs.get('always_up_accuracy'))}; "
+            "skill: Brier спрямо монета, база: спрямо базовата честота, p: тест дали AUC > 0.5")
+        add(f"  Предимство: {'да' if bt.has_edge else 'не'} — {bt.edge_reason}")
         s = bt.strategy
         add(f"  Стратегия по сигнала (такса {_pct(cfg.fee, 2)}): {_pct(s['total_return'], 1, True)} "
             f"срещу купи-и-дръж {_pct(s['buy_and_hold_return'], 1, True)}; "

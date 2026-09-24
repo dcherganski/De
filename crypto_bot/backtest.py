@@ -11,10 +11,15 @@ from typing import Callable
 
 import numpy as np
 import pandas as pd
+from scipy.stats import mannwhitneyu
 from sklearn.metrics import roc_auc_score
 
 from .features import Dataset, _bar_seconds
 from .models import BaseModel, EnsembleModel, default_models
+
+# The edge test: fewer predictions than this, or a p-value above this, is not evidence.
+EDGE_MIN_PREDICTIONS = 200
+EDGE_ALPHA = 0.01
 
 
 @dataclass
@@ -24,6 +29,8 @@ class BacktestResult:
     equity: pd.DataFrame  # strategy vs buy & hold equity curves
     strategy: dict  # summary of the simulated strategy
     weights: dict[str, float] = field(default_factory=dict)  # suggested ensemble weights
+    has_edge: bool = False  # did the ensemble pass `edge_test`?
+    edge_reason: str = ""  # the three hurdles of `edge_test` with their outcome
 
 
 def walk_forward(
@@ -57,6 +64,8 @@ def walk_forward(
                 frame[f"{name}_prob"] = out["prob_up"]
                 frame[f"{name}_ret"] = out["exp_return"]
             frame["train_size"] = int(train_mask.sum())
+            # Up-frequency known at the time: the benchmark a forecast has to beat.
+            frame["base_rate"] = float((fwd[train_mask] > 0).mean())
             rows.append(frame)
         i = block.stop
     if not rows:
@@ -69,9 +78,22 @@ def walk_forward(
     return preds
 
 
+def _auc_p_value(prob: pd.Series, up: pd.Series) -> float:
+    """One-sided Mann-Whitney test of AUC > 0.5: do up bars get higher probabilities than
+    down bars more often than chance would give?"""
+    pos, neg = prob[up > 0.5], prob[up <= 0.5]
+    if len(pos) < 2 or len(neg) < 2:
+        return float("nan")
+    return float(mannwhitneyu(pos, neg, alternative="greater").pvalue)
+
+
 def score_predictions(preds: pd.DataFrame, confident_margin: float = 0.05) -> pd.DataFrame:
     actual = preds["actual_return"]
     up = (actual > 0).astype(float)
+    # A coin flip is too easy a benchmark in a trending market: always predicting the
+    # up-frequency known at the time already scores below 0.25 with zero skill.
+    base = preds["base_rate"] if "base_rate" in preds else pd.Series(0.5, index=preds.index)
+    brier_base = float(((base - up) ** 2).mean())
     names = [c[: -len("_prob")] for c in preds.columns if c.endswith("_prob")]
     rows = []
     for name in names:
@@ -86,8 +108,10 @@ def score_predictions(preds: pd.DataFrame, confident_margin: float = 0.05) -> pd
                 "accuracy": float(((p > 0.5) == (up > 0.5)).mean()),
                 "brier": brier,
                 "brier_skill": 1.0 - brier / 0.25,  # vs. a 50/50 coin flip
+                "brier_skill_base": 1.0 - brier / brier_base if brier_base > 0 else float("nan"),
                 "log_loss": float(-(up * np.log(p) + (1 - up) * np.log(1 - p)).mean()),
                 "auc": float(roc_auc_score(up, p)) if up.nunique() > 1 else float("nan"),
+                "auc_p": _auc_p_value(p, up),
                 "confident_n": int(confident.sum()),
                 "confident_accuracy": float(((p[confident] > 0.5) == (up[confident] > 0.5)).mean())
                 if confident.any()
@@ -98,6 +122,31 @@ def score_predictions(preds: pd.DataFrame, confident_margin: float = 0.05) -> pd
     table = pd.DataFrame(rows).set_index("model")
     table.attrs["always_up_accuracy"] = float(up.mean())
     return table
+
+
+def edge_test(
+    metrics: pd.DataFrame, min_predictions: int = EDGE_MIN_PREDICTIONS, alpha: float = EDGE_ALPHA
+) -> tuple[bool, str]:
+    """Does the ensemble have a real out-of-sample edge, or just a lucky-looking number?
+
+    Three hurdles, all required: enough predictions for a test to mean anything, an AUC
+    above 0.5 that a one-sided Mann-Whitney test does not attribute to chance, and a Brier
+    score better than the base rate known at the time. Returns the verdict and a
+    one-line account of each hurdle, so a reader can see which one failed.
+    """
+    ens = metrics.loc["ensemble"]
+    n = int(ens["n"])
+    p = float(ens["auc_p"])
+    skill = float(ens["brier_skill_base"])
+    checks = [
+        (n >= min_predictions, f"{n} прогнози извън извадката (нужни са поне {min_predictions})"),
+        (
+            np.isfinite(p) and p < alpha,
+            f"AUC {ens['auc']:.3f} с p = {p:.3f} (нужно е p < {alpha:g})" if np.isfinite(p) else "AUC не може да се изчисли",
+        ),
+        (skill > 0, f"Brier skill спрямо базовата честота {skill:+.3f} (нужно е > 0)"),
+    ]
+    return all(ok for ok, _ in checks), "; ".join(f"{text} {'✓' if ok else '✗'}" for ok, text in checks)
 
 
 def performance_weights(metrics: pd.DataFrame) -> dict[str, float]:
@@ -171,10 +220,13 @@ def run_backtest(
         long_only=long_only,
         periods_per_year=periods,
     )
+    has_edge, edge_reason = edge_test(metrics)
     return BacktestResult(
         predictions=preds,
         metrics=metrics,
         equity=equity,
         strategy=stats,
         weights=performance_weights(metrics),
+        has_edge=has_edge,
+        edge_reason=edge_reason,
     )

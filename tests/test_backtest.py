@@ -1,9 +1,10 @@
 import numpy as np
 import pandas as pd
 
-from crypto_bot.backtest import performance_weights, run_backtest, simulate_strategy, walk_forward
+from crypto_bot.backtest import edge_test, performance_weights, run_backtest, simulate_strategy, walk_forward
 from crypto_bot.features import build_dataset
 from crypto_bot.models import EventStudyModel, MarkovModel
+from tests.conftest import make_ohlcv
 
 
 def light_models():
@@ -56,3 +57,28 @@ def test_run_backtest_end_to_end(random_walk):
     assert {"events", "markov", "ensemble"} <= set(res.metrics.index)
     assert res.metrics["accuracy"].between(0, 1).all()
     assert len(res.equity) == res.predictions["next_return"].notna().sum()
+    assert res.predictions["base_rate"].between(0, 1).all()
+    assert {"auc_p", "brier_skill_base"} <= set(res.metrics.columns)
+
+
+def test_edge_test_hurdles():
+    def metrics(n=499, auc=0.56, auc_p=0.005, skill_base=0.01):
+        return pd.DataFrame({"n": [n], "auc": [auc], "auc_p": [auc_p], "brier_skill_base": [skill_base]}, index=["ensemble"])
+
+    ok, reason = edge_test(metrics())
+    assert ok and "✗" not in reason
+    # Each hurdle on its own is enough to fail, and the reason names the one that did.
+    for bad in ({"n": 150}, {"auc_p": 0.02}, {"skill_base": -0.001}, {"auc_p": float("nan")}):
+        ok, reason = edge_test(metrics(**bad))
+        assert not ok and reason.count("✗") == 1
+
+
+def test_edge_needs_a_real_pattern(random_walk):
+    rng = np.random.default_rng(0)
+    r = np.zeros(600)
+    for t in range(1, len(r)):
+        r[t] = 0.5 * r[t - 1] + rng.normal(0, 0.02)  # strong, learnable autocorrelation
+    planted = run_backtest(build_dataset(make_ohlcv(r, seed=2)), min_train=120, step=25, models_factory=light_models)
+    assert planted.has_edge and planted.metrics.loc["ensemble", "auc_p"] < 0.01
+    noise = run_backtest(build_dataset(random_walk), min_train=120, step=25, models_factory=light_models)
+    assert not noise.has_edge and "✗" in noise.edge_reason
