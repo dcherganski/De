@@ -1,0 +1,674 @@
+<title>Крипто прогнозен бот</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Unbounded:wght@500;700&display=swap">
+<style>
+  :root {
+    --bg: #f2f4f7;
+    --surface: #ffffff;
+    --surface-2: #eaeef3;
+    --ink: #111521;
+    --ink-2: #485065;
+    --ink-3: #6d7589;
+    --rule: #d9dee7;
+    --grid: #e5e9ef;
+    --accent: #d98a14;
+    --accent-ink: #8a5300;
+    --fan-95: rgba(217, 138, 20, 0.16);
+    --fan-68: rgba(217, 138, 20, 0.34);
+    --series-1: #2a78d6;
+    --series-1-fill: rgba(42, 120, 214, 0.08);
+    --series-2: #eb6834;
+    --up: #0ca30c;
+    --up-ink: #0a6e0a;
+    --down: #d03b3b;
+    --down-ink: #b02a2a;
+    --warn: #fab219;
+    --warn-ink: #7d5000;
+    --shadow: 0 1px 2px rgba(17, 21, 33, 0.06), 0 4px 16px rgba(17, 21, 33, 0.05);
+    --font-display: "Unbounded", "Golos Text", system-ui, sans-serif;
+    --font-body: "Golos Text", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #0d1016;
+      --surface: #151922;
+      --surface-2: #1b202b;
+      --ink: #e8ebf2;
+      --ink-2: #aab1c2;
+      --ink-3: #848c9f;
+      --rule: #272e3c;
+      --grid: #212735;
+      --accent: #f0a33a;
+      --accent-ink: #f5b660;
+      --fan-95: rgba(240, 163, 58, 0.15);
+      --fan-68: rgba(240, 163, 58, 0.32);
+      --series-1: #3987e5;
+      --series-1-fill: rgba(57, 135, 229, 0.10);
+      --series-2: #d95926;
+      --up-ink: #4cc94c;
+      --down-ink: #ef7a7a;
+      --warn-ink: #fab219;
+      --shadow: none;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0d1016;
+    --surface: #151922;
+    --surface-2: #1b202b;
+    --ink: #e8ebf2;
+    --ink-2: #aab1c2;
+    --ink-3: #848c9f;
+    --rule: #272e3c;
+    --grid: #212735;
+    --accent: #f0a33a;
+    --accent-ink: #f5b660;
+    --fan-95: rgba(240, 163, 58, 0.15);
+    --fan-68: rgba(240, 163, 58, 0.32);
+    --series-1: #3987e5;
+    --series-1-fill: rgba(57, 135, 229, 0.10);
+    --series-2: #d95926;
+    --up-ink: #4cc94c;
+    --down-ink: #ef7a7a;
+    --warn-ink: #fab219;
+    --shadow: none;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding-inline: 16px;
+    padding-block: 28px 56px;
+    display: grid;
+    gap: 28px;
+  }
+  @media (min-width: 720px) { .wrap { padding-inline: 28px; } }
+
+  h1, h2, h3 { text-wrap: balance; margin: 0; }
+  h2 {
+    font-family: var(--font-display);
+    font-weight: 500;
+    font-size: 17px;
+    letter-spacing: 0.01em;
+  }
+  p { margin: 0; }
+  .eyebrow {
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+  .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  .muted { color: var(--ink-3); }
+  .section { display: grid; gap: 14px; }
+  .section-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; }
+  .section-head p { color: var(--ink-3); font-size: 13.5px; max-width: 62ch; }
+
+  /* Header */
+  .masthead { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; }
+  .masthead h1 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(30px, 6vw, 46px);
+    line-height: 1.05;
+    letter-spacing: -0.01em;
+  }
+  .masthead h1 .quote { color: var(--ink-3); font-weight: 500; }
+  .masthead .sub { color: var(--ink-2); margin-top: 8px; }
+  .stamp { text-align: right; font-size: 12.5px; color: var(--ink-3); display: grid; gap: 2px; }
+  @media (max-width: 560px) { .stamp { text-align: left; } }
+
+  /* Verdict */
+  .verdict {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 14px;
+    box-shadow: var(--shadow);
+  }
+  .verdict > div { padding: 20px 22px; display: grid; gap: 10px; align-content: start; }
+  .verdict > div + div { border-left: 1px solid var(--rule); }
+  @media (max-width: 860px) {
+    .verdict { grid-template-columns: 1fr; }
+    .verdict > div + div { border-left: 0; border-top: 1px solid var(--rule); }
+  }
+  .big {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(34px, 5vw, 44px);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .gauge { position: relative; height: 10px; border-radius: 5px; background: var(--surface-2); margin-top: 6px; }
+  .gauge .fill { position: absolute; top: 0; bottom: 0; border-radius: 5px; }
+  .gauge .mid { position: absolute; left: 50%; top: -4px; bottom: -4px; width: 2px; background: var(--ink-3); }
+  .gauge-scale { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--ink-3); }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 13.5px; align-items: baseline; }
+  .kv dt { color: var(--ink-3); }
+  .kv dd { margin: 0; text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: var(--font-display); font-weight: 700; font-size: 22px; letter-spacing: 0.04em;
+    padding: 8px 16px; border-radius: 999px; width: fit-content;
+    border: 1.5px solid currentColor;
+  }
+  .pill.up { color: var(--up-ink); }
+  .pill.down { color: var(--down-ink); }
+  .pill.hold { color: var(--ink-2); }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px; width: fit-content;
+    font-size: 12.5px; font-weight: 500; padding: 3px 10px; border-radius: 999px;
+    background: var(--surface-2); color: var(--ink-2);
+  }
+  .chip.warn { color: var(--warn-ink); background: rgba(250, 178, 25, 0.14); }
+  .chip.good { color: var(--up-ink); background: rgba(12, 163, 12, 0.12); }
+  .chip.accent { color: var(--accent-ink); background: var(--fan-95); }
+  .reason { font-size: 13.5px; color: var(--ink-2); max-width: 46ch; }
+  .up-ink { color: var(--up-ink); }
+  .down-ink { color: var(--down-ink); }
+
+  /* Panels */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 14px;
+    padding: 18px 20px;
+    box-shadow: var(--shadow);
+    display: grid;
+    gap: 14px;
+    min-width: 0;
+  }
+  .two { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 20px; }
+  @media (max-width: 860px) { .two { grid-template-columns: 1fr; } }
+  .two > .section { grid-template-rows: auto 1fr; }
+  .two .section-head { flex-direction: column; align-items: flex-start; gap: 4px; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12.5px; color: var(--ink-2); }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; }
+  .sw { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+  .sw.box { height: 10px; border-radius: 2px; }
+
+  .chart { position: relative; width: 100%; }
+  .chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .chart text { font-family: var(--font-mono); font-size: 11px; fill: var(--ink-3); }
+  .tip {
+    position: absolute; pointer-events: none; z-index: 2;
+    background: var(--surface); color: var(--ink);
+    border: 1px solid var(--rule); border-radius: 8px;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.14);
+    padding: 8px 10px; font-size: 12.5px; line-height: 1.45; min-width: 150px;
+  }
+  .tip b { font-weight: 600; }
+  .tip .row { display: flex; justify-content: space-between; gap: 14px; }
+  .tip .row span:last-child { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+  /* Model votes */
+  .votes { display: grid; gap: 10px; }
+  .vote { display: grid; grid-template-columns: minmax(0, 1fr) 64px; gap: 4px 12px; align-items: center; }
+  .vote .name { font-size: 13.5px; display: flex; justify-content: space-between; gap: 8px; }
+  .vote .name small { color: var(--ink-3); font-size: 12px; font-family: var(--font-mono); }
+  .vote .val { grid-row: span 2; text-align: right; font-family: var(--font-mono); font-size: 14px; font-variant-numeric: tabular-nums; }
+  .track { position: relative; height: 8px; background: var(--surface-2); border-radius: 4px; }
+  .track .bar { position: absolute; top: 0; bottom: 0; border-radius: 4px; }
+  .track .mid { position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1.5px; background: var(--ink-3); }
+  .vote.total { padding-top: 10px; border-top: 1px solid var(--rule); }
+  .vote.total .name { font-weight: 600; }
+  .axis-note { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--ink-3); padding-right: 76px; }
+
+  /* Events */
+  .ev-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; font-size: 13.5px; }
+  .ev-list li { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+  .ev-list time { color: var(--ink-3); font-family: var(--font-mono); font-size: 12.5px; white-space: nowrap; }
+  .sub-h { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+
+  /* Tables */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th, td { padding: 9px 10px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--rule); }
+  th:first-child, td:first-child { text-align: left; padding-left: 0; }
+  th { font-size: 11.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
+  td { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  td:first-child { font-family: var(--font-body); white-space: normal; min-width: 180px; }
+  tr.hl td { font-weight: 600; background: var(--surface-2); }
+  tr.hl td:first-child { padding-left: 8px; }
+  .hitbar { position: relative; display: inline-block; width: 90px; height: 8px; background: var(--surface-2); border-radius: 4px; vertical-align: middle; margin-right: 8px; }
+  .hitbar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: var(--series-1); }
+  .hitbar b { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--ink); }
+  .tag-now { font-family: var(--font-body); font-size: 11px; font-weight: 600; color: var(--accent-ink); margin-left: 6px; }
+
+  .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  @media (max-width: 860px) { .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .kpi { background: var(--surface-2); border-radius: 10px; padding: 12px 14px; display: grid; gap: 4px; }
+  .kpi .label { font-size: 12px; color: var(--ink-3); }
+  .kpi .value { font-family: var(--font-mono); font-size: 20px; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .kpi .note { font-size: 12px; color: var(--ink-3); }
+
+  footer { font-size: 13px; color: var(--ink-3); display: grid; gap: 8px; max-width: 80ch; }
+  footer strong { color: var(--ink-2); font-weight: 600; }
+  code { font-family: var(--font-mono); font-size: 0.92em; background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
+  .empty { padding: 40px 0; color: var(--ink-2); }
+</style>
+
+<div class="wrap" id="app"></div>
+
+<script>
+(function () {
+  "use strict";
+  var D = /*__BOT_DATA__*/null;
+  var app = document.getElementById("app");
+  if (!D) {
+    app.innerHTML = '<p class="empty">Няма данни. Генерирай отчета с <code>python -m crypto_bot predict --html reports/dashboard.html</code>.</p>';
+    return;
+  }
+  var P = D.prediction, M = D.meta, BT = D.backtest;
+  var BAR = { "1m": 60, "5m": 300, "15m": 900, "1h": 3600, "6h": 21600, "1d": 86400 };
+  var barMs = (BAR[M.granularity] || 86400) * 1000;
+  var intraday = barMs < 86400000;
+  var SVGNS = "http://www.w3.org/2000/svg";
+
+  function nf(d) { return new Intl.NumberFormat("bg-BG", { minimumFractionDigits: d, maximumFractionDigits: d }); }
+  function usd(v, d) {
+    if (v == null || isNaN(v)) return "—";
+    if (d == null) d = Math.abs(v) >= 1000 ? 0 : 2;
+    return "$" + nf(d).format(v);
+  }
+  function pct(v, d, sign) {
+    if (v == null || isNaN(v)) return "—";
+    if (d == null) d = 1;
+    var s = v < 0 ? "−" : (sign && v > 0 ? "+" : "");
+    return s + nf(d).format(Math.abs(v) * 100) + "%";
+  }
+  var dFull = new Intl.DateTimeFormat("bg-BG", intraday
+    ? { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "UTC" }
+    : { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" });
+  var dAxis = new Intl.DateTimeFormat("bg-BG", intraday
+    ? { day: "2-digit", month: "2-digit", hour: "2-digit", timeZone: "UTC" }
+    : { day: "numeric", month: "short", timeZone: "UTC" });
+  function fdate(t) { return dFull.format(new Date(t)); }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function el(tag, attrs, parent) {
+    var n = document.createElementNS(SVGNS, tag);
+    for (var k in attrs) n.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(n);
+    return n;
+  }
+  function niceTicks(min, max, count) {
+    var span = max - min || Math.abs(max) || 1;
+    var step0 = span / count, mag = Math.pow(10, Math.floor(Math.log10(step0))), norm = step0 / mag;
+    var step = (norm < 1.5 ? 1 : norm < 3 ? 2 : norm < 7 ? 5 : 10) * mag;
+    var out = [];
+    for (var v = Math.ceil(min / step) * step; v <= max + step * 1e-9; v += step) out.push(+v.toFixed(10));
+    return out;
+  }
+  var SIGNAL = {
+    BUY: { cls: "up", icon: "▲", text: "КУПИ" },
+    SELL: { cls: "down", icon: "▼", text: "ПРОДАЙ" },
+    HOLD: { cls: "hold", icon: "■", text: "ИЗЧАКАЙ" }
+  };
+  var granText = { "1m": "1-минутни", "5m": "5-минутни", "15m": "15-минутни", "1h": "часови", "6h": "6-часови", "1d": "дневни" }[M.granularity] || M.granularity;
+  var horizonText = M.horizon === 1 ? "1 период напред" : M.horizon + " периода напред";
+  document.title = M.product + " · прогнозен бот";
+
+  var expChange = Math.expm1(P.exp_return);
+  var sig = SIGNAL[P.signal] || SIGNAL.HOLD;
+  var edgeChip = P.has_edge === true
+    ? '<span class="chip good">✓ Доказано предимство в бектеста</span>'
+    : P.has_edge === false
+      ? '<span class="chip warn">⚠ Без доказано предимство в бектеста</span>'
+      : '<span class="chip">Бектестът е изключен</span>';
+  var up = P.prob_up >= 0.5;
+  var gaugeLeft = Math.min(P.prob_up, 0.5) * 100, gaugeWidth = Math.abs(P.prob_up - 0.5) * 100;
+
+  var html = "";
+  html += '<header class="masthead"><div>' +
+    '<div class="eyebrow">Крипто прогнозен бот</div>' +
+    '<h1>' + esc(M.product.split("-")[0]) + '<span class="quote">/' + esc(M.product.split("-")[1] || "") + '</span></h1>' +
+    '<p class="sub">' + esc(granText) + ' свещи · прогноза ' + esc(horizonText) + ' · ' + M.n_candles + ' свещи история от Coinbase</p>' +
+    '</div><div class="stamp">' +
+    '<span>Последна затворена свещ: <b class="num">' + fdate(Date.parse(P.as_of)) + '</b></span>' +
+    '<span>Прогнозата е за затварянето: <b class="num">' + fdate(Date.parse(P.target_close_time)) + ' UTC</b></span>' +
+    '</div></header>';
+
+  html += '<section class="verdict" aria-label="Прогноза">' +
+    '<div><span class="eyebrow">Вероятност за ръст</span>' +
+      '<span class="big ' + (up ? "up-ink" : "down-ink") + '">' + pct(P.prob_up) + '</span>' +
+      '<div class="gauge" role="img" aria-label="Вероятност за ръст ' + pct(P.prob_up) + '">' +
+        '<div class="fill" style="left:' + gaugeLeft + '%;width:' + gaugeWidth + '%;background:var(' + (up ? "--up" : "--down") + ')"></div>' +
+        '<div class="mid"></div></div>' +
+      '<div class="gauge-scale"><span>0% спад</span><span>50%</span><span>100% ръст</span></div>' +
+    '</div>' +
+    '<div><span class="eyebrow">Очаквана цена</span>' +
+      '<span class="big num">' + usd(P.expected_price) + '</span>' +
+      '<dl class="kv">' +
+        '<dt>Сега</dt><dd>' + usd(P.last_close, 2) + '</dd>' +
+        '<dt>Очаквана промяна</dt><dd class="' + (expChange >= 0 ? "up-ink" : "down-ink") + '">' + pct(expChange, 2, true) + '</dd>' +
+        '<dt>Диапазон 68%</dt><dd>' + usd(P.range_68[0]) + ' – ' + usd(P.range_68[1]) + '</dd>' +
+        '<dt>Диапазон 95%</dt><dd>' + usd(P.range_95[0]) + ' – ' + usd(P.range_95[1]) + '</dd>' +
+      '</dl></div>' +
+    '<div><span class="eyebrow">Сигнал</span>' +
+      '<span class="pill ' + sig.cls + '"><span aria-hidden="true">' + sig.icon + '</span>' + sig.text + '</span>' +
+      edgeChip +
+      '<p class="reason">' + esc(P.signal_reason) + '</p>' +
+    '</div></section>';
+
+  html += '<section class="section"><div class="section-head"><h2>Цена и прогнозен коридор</h2>' +
+    '<p>Последните ' + D.history.length + ' свещи. Вдясно (увеличено): очакваният път и коридорите, в които цената е попадала в 68% и 95% от случаите при сходна волатилност.</p></div>' +
+    '<div class="panel"><div class="legend">' +
+      '<span><i class="sw" style="background:var(--series-1)"></i>Цена на затваряне</span>' +
+      '<span><i class="sw" style="background:var(--accent)"></i>Очакван път</span>' +
+      '<span><i class="sw box" style="background:var(--fan-68)"></i>Коридор 68%</span>' +
+      '<span><i class="sw box" style="background:var(--fan-95)"></i>Коридор 95%</span>' +
+    '</div><div class="chart" id="price-chart"></div></div></section>';
+
+  // Model votes + events
+  var models = Object.keys(P.models).filter(function (k) { return k !== "ensemble"; });
+  var votes = '<div class="votes">';
+  function voteRow(key, m, total) {
+    var p = m.prob_up, lo = 0.3, hi = 0.7;
+    var clamp = Math.max(lo, Math.min(hi, p));
+    var pos = (clamp - lo) / (hi - lo) * 100;
+    var left = Math.min(pos, 50), width = Math.abs(pos - 50);
+    return '<div class="vote' + (total ? " total" : "") + '">' +
+      '<div class="name"><span>' + esc(m.label) + '</span>' + (total ? "" : '<small>тегло ' + nf(2).format(m.weight) + '</small>') + '</div>' +
+      '<div class="val ' + (p >= 0.5 ? "up-ink" : "down-ink") + '">' + (p >= 0.5 ? "▲ " : "▼ ") + pct(p) + '</div>' +
+      '<div class="track"><div class="bar" style="left:' + left + '%;width:' + Math.max(width, 0.6) + '%;background:var(' + (p >= 0.5 ? "--up" : "--down") + ')"></div><div class="mid"></div></div>' +
+      '</div>';
+  }
+  models.forEach(function (k) { votes += voteRow(k, P.models[k], false); });
+  votes += voteRow("ensemble", P.models.ensemble, true);
+  votes += '<div class="axis-note"><span>30%</span><span>50%</span><span>70%</span></div></div>';
+
+  var evRows = (D.events.rows || []);
+  var evByName = {};
+  evRows.forEach(function (r) { evByName[r.event] = r; });
+  var active = P.active_events || [];
+  var evHtml = "";
+  if ((P.upcoming_events || []).length) {
+    evHtml += '<div class="sub-h">Предстоящи в прогнозния прозорец</div><ul class="ev-list">' +
+      P.upcoming_events.map(function (e) {
+        return '<li><span class="chip warn">⚠ ' + esc(e.label) + '</span><time>' + fdate(Date.parse(e.time)) + '</time></li>';
+      }).join("") + "</ul>";
+  }
+  evHtml += '<div class="sub-h">Активни на последната свещ</div>';
+  evHtml += active.length
+    ? '<div class="chips">' + active.map(function (e) { return '<span class="chip accent">' + esc(e.label) + '</span>'; }).join("") + "</div>" +
+      '<ul class="ev-list">' + active.map(function (e) {
+        return '<li><span>' + esc(e.label) + '</span><span class="num">' + e.count + ' пъти · ръст след тях ' + pct(e.hit_rate, 0) + '</span></li>';
+      }).join("") + "</ul>"
+    : '<p class="muted">Няма събития на последната свещ.</p>';
+  evHtml += '<div class="sub-h">Последни 10 свещи</div>';
+  evHtml += (P.recent_events || []).length
+    ? '<ul class="ev-list">' + P.recent_events.slice(0, 8).map(function (e) {
+        return '<li><span>' + esc(e.label) + '</span><time>' + fdate(Date.parse(e.time)) + '</time></li>';
+      }).join("") + "</ul>"
+    : '<p class="muted">Няма събития.</p>';
+  evHtml += '<div class="sub-h">Най-сходни минали ситуации</div>';
+  evHtml += '<ul class="ev-list">' + (P.analogs || []).map(function (a) {
+    var r = Math.expm1(a.fwd_return);
+    return '<li><time>' + fdate(Date.parse(a.time)) + '</time><span class="num ' + (r >= 0 ? "up-ink" : "down-ink") + '">след това ' + pct(r, 2, true) + '</span></li>';
+  }).join("") + "</ul>";
+
+  html += '<section class="two">' +
+    '<div class="section"><div class="section-head"><h2>Гласове на моделите</h2><p>Вероятност за ръст по модели и теглото им в ансамбъла.</p></div>' +
+      '<div class="panel">' + votes + '</div></div>' +
+    '<div class="section"><div class="section-head"><h2>Събития и аналози</h2><p>Какво се случва сега и кога пазарът е изглеждал най-сходно.</p></div>' +
+      '<div class="panel">' + evHtml + '</div></div>' +
+    '</section>';
+
+  // Backtest
+  if (BT) {
+    var ens = BT.metrics.filter(function (r) { return r.model === "ensemble"; })[0] || {};
+    var S = BT.strategy;
+    html += '<section class="section"><div class="section-head"><h2>Проверка върху миналото</h2>' +
+      '<p>Walk-forward тест от ' + fdate(Date.parse(BT.first_test)) + ' до ' + fdate(Date.parse(BT.last_test)) +
+      ': моделите се обучават само с данни, известни към всеки момент, и прогнозират следващата стъпка.</p></div>' +
+      '<div class="kpis">' +
+        '<div class="kpi"><span class="label">Точност на ансамбъла</span><span class="value">' + pct(ens.accuracy) + '</span><span class="note">„винаги нагоре“: ' + pct(BT.always_up_accuracy) + '</span></div>' +
+        '<div class="kpi"><span class="label">Brier skill спрямо монета</span><span class="value ' + (ens.brier_skill > 0 ? "up-ink" : "down-ink") + '">' + (ens.brier_skill > 0 ? "+" : "−") + nf(3).format(Math.abs(ens.brier_skill)) + '</span><span class="note">над 0 = по-добре от 50/50</span></div>' +
+        '<div class="kpi"><span class="label">Попадения в коридор 68%</span><span class="value">' + pct(D.volatility.coverage_68) + '</span><span class="note">95% коридор: ' + pct(D.volatility.coverage_95) + '</span></div>' +
+        '<div class="kpi"><span class="label">Стратегия по сигнала</span><span class="value ' + (S.total_return >= 0 ? "up-ink" : "down-ink") + '">' + pct(S.total_return, 1, true) + '</span><span class="note">купи-и-дръж: ' + pct(S.buy_and_hold_return, 1, true) + '</span></div>' +
+      '</div>' +
+      '<div class="panel"><div class="legend">' +
+        '<span><i class="sw" style="background:var(--series-1)"></i>Стратегия по сигнала (long-only, такса ' + pct(S.fee, 2) + ')</span>' +
+        '<span><i class="sw" style="background:var(--series-2)"></i>Купи и дръж</span>' +
+      '</div><div class="chart" id="equity-chart"></div>' +
+      '<p class="muted" style="font-size:12.5px">Sharpe ' + nf(2).format(S.sharpe) + ' · макс. просадка ' + pct(S.max_drawdown) + ' · ' + S.trades + ' сделки · в позиция ' + pct(S.exposure, 0) + ' от времето</p></div>';
+
+    var mt = '<div class="panel"><div class="table-wrap"><table><thead><tr><th>Модел</th><th>Точност</th><th>Brier</th><th>Skill</th><th>AUC</th><th>Уверени</th><th>Точност уверени</th><th>IC</th></tr></thead><tbody>';
+    BT.metrics.forEach(function (r) {
+      mt += '<tr' + (r.model === "ensemble" ? ' class="hl"' : "") + '><td>' + esc(r.label) + '</td><td>' + pct(r.accuracy) + '</td><td>' + nf(4).format(r.brier) +
+        '</td><td class="' + (r.brier_skill > 0 ? "up-ink" : "down-ink") + '">' + (r.brier_skill > 0 ? "+" : "−") + nf(3).format(Math.abs(r.brier_skill)) +
+        '</td><td>' + (r.auc == null ? "—" : nf(3).format(r.auc)) + '</td><td>' + r.confident_n + '</td><td>' + pct(r.confident_accuracy) +
+        '</td><td>' + (r.return_ic == null ? "—" : nf(3).format(r.return_ic)) + '</td></tr>';
+    });
+    mt += '</tbody></table></div><p class="muted" style="font-size:12.5px">' + BT.metrics[0].n + ' прогнози извън извадката. Brier: по-ниско е по-добре, 0,25 = монета. „Уверени“: вероятност извън 45–55%. IC: рангова корелация между очакваната и реалната доходност.</p></div>';
+    html += mt + '</section>';
+  }
+
+  // Event study
+  var baseRate = D.events.base_rate;
+  var et = '<section class="section"><div class="section-head"><h2>Какво е следвало след всяко събитие</h2>' +
+    '<p>Цялата история: колко пъти се е случило събитието и колко често цената е била по-висока ' + esc(horizonText.replace("напред", "по-късно")) + '. Черната черта е базовото ниво (' + pct(baseRate) + ').</p></div>' +
+    '<div class="panel"><div class="table-wrap"><table><thead><tr><th>Събитие</th><th>Брой</th><th>Ръст след него</th><th>Спрямо базата</th><th>Ср. доходност</th><th>t</th><th>Последно</th></tr></thead><tbody>';
+  var activeSet = {};
+  active.forEach(function (e) { activeSet[e.event] = true; });
+  evRows.forEach(function (r) {
+    var hit = r.hit_rate;
+    et += '<tr><td>' + esc(r.label) + (activeSet[r.event] ? '<span class="tag-now">сега</span>' : "") + '</td><td>' + r.count + '</td><td>' +
+      (hit == null ? "—" : '<span class="hitbar" aria-hidden="true"><i style="width:' + (hit * 100) + '%"></i><b style="left:calc(' + (baseRate * 100) + '% - 1px)"></b></span>' + pct(hit, 0)) +
+      '</td><td class="' + (r.edge_vs_base > 0 ? "up-ink" : r.edge_vs_base < 0 ? "down-ink" : "") + '">' + pct(r.edge_vs_base, 1, true) +
+      '</td><td>' + pct(r.mean_return, 2, true) + '</td><td>' + (r.t_stat == null ? "—" : nf(2).format(r.t_stat)) +
+      '</td><td>' + (r.last_seen ? fdate(Date.parse(r.last_seen)) : "—") + '</td></tr>';
+  });
+  et += '</tbody></table></div><p class="muted" style="font-size:12.5px">|t| под 2 означава, че разликата може да е случайна. Малък брой случаи = слабо доказателство.</p></div></section>';
+  html += et;
+
+  html += '<footer><p><strong>Как работи.</strong> Ботът разпознава 14 типа пазарни събития, изчислява какво е следвало след всяко от тях в миналото и комбинира пет модела: статистика на събитията, исторически аналози (k-NN), Марковска верига, логистична регресия и gradient boosting. Коридорите идват от EWMA волатилност, калибрирана с реалните минали отклонения.</p>' +
+    '<p>' + esc(M.disclaimer) + '</p>' +
+    '<p>Генерирано ' + new Intl.DateTimeFormat("bg-BG", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }).format(new Date(M.generated_at)) + ' UTC · данни ' + fdate(Date.parse(M.first_candle)) + ' – ' + fdate(Date.parse(M.last_candle)) + '</p></footer>';
+
+  app.innerHTML = html;
+
+  // ---------- charts ----------
+  function tooltip(container) {
+    var t = document.createElement("div");
+    t.className = "tip";
+    t.hidden = true;
+    container.appendChild(t);
+    return t;
+  }
+  function placeTip(tip, container, x, y) {
+    var cw = container.clientWidth, tw = tip.offsetWidth;
+    var left = x + 14;
+    if (left + tw > cw) left = x - tw - 14;
+    tip.style.left = Math.max(0, left) + "px";
+    tip.style.top = Math.max(0, y - 20) + "px";
+  }
+
+  function drawPrice() {
+    var box = document.getElementById("price-chart");
+    box.innerHTML = "";
+    var W = Math.max(300, box.clientWidth), H = W < 560 ? 260 : 330;
+    var m = { t: 18, r: 70, b: 30, l: 4 };
+    var hist = D.history.map(function (d) { return { t: Date.parse(d.t), c: d.c }; });
+    var last = hist[hist.length - 1], first = hist[0];
+    var h = M.horizon, tEnd = last.t + h * barMs;
+    var pw = W - m.l - m.r, ph = H - m.t - m.b;
+    var futureFrac = W < 560 ? 0.2 : 0.15;
+    var xSplit = m.l + pw * (1 - futureFrac), xEnd = m.l + pw;
+    function x(t) {
+      return t <= last.t ? m.l + (t - first.t) / (last.t - first.t) * (xSplit - m.l)
+                         : xSplit + (t - last.t) / (tEnd - last.t) * (xEnd - xSplit);
+    }
+    var mu = P.exp_return, s1 = P.sigma, c0 = last.c;
+    function z(v) { return (Math.log(v / c0) - mu) / s1; }
+    var z95 = [z(P.range_95[0]), z(P.range_95[1])], z68 = [z(P.range_68[0]), z(P.range_68[1])];
+    var fan = [];
+    for (var i = 0; i <= 24; i++) {
+      var s = i / 24, sd = s1 * Math.sqrt(s);
+      fan.push({ t: last.t + s * h * barMs, mid: c0 * Math.exp(mu * s),
+        lo95: c0 * Math.exp(mu * s + z95[0] * sd), hi95: c0 * Math.exp(mu * s + z95[1] * sd),
+        lo68: c0 * Math.exp(mu * s + z68[0] * sd), hi68: c0 * Math.exp(mu * s + z68[1] * sd) });
+    }
+    var ymin = Math.min.apply(null, hist.map(function (d) { return d.c; }).concat([P.range_95[0]]));
+    var ymax = Math.max.apply(null, hist.map(function (d) { return d.c; }).concat([P.range_95[1]]));
+    var pad = (ymax - ymin) * 0.06; ymin -= pad; ymax += pad;
+    function y(v) { return m.t + (1 - (v - ymin) / (ymax - ymin)) * ph; }
+
+    var svg = el("svg", { viewBox: "0 0 " + W + " " + H, width: W, height: H, role: "img",
+      "aria-label": "Цена на " + M.product + " за последните " + hist.length + " свещи и прогнозен коридор" });
+    el("rect", { x: xSplit, y: m.t, width: xEnd - xSplit, height: ph, fill: "var(--surface-2)", rx: 6 }, svg);
+    niceTicks(ymin, ymax, H < 300 ? 4 : 5).forEach(function (v) {
+      el("line", { x1: m.l, x2: xEnd, y1: y(v), y2: y(v), stroke: "var(--grid)", "stroke-width": 1 }, svg);
+      var tx = el("text", { x: xEnd + 8, y: y(v) + 4 }, svg); tx.textContent = usd(v, 0);
+    });
+    var nX = W < 560 ? 3 : 5;
+    for (var k = 0; k < nX; k++) {
+      var idx = Math.round(k * (hist.length - 1) / nX);
+      var tt = el("text", { x: x(hist[idx].t), y: H - 8, "text-anchor": k === 0 ? "start" : "middle" }, svg);
+      tt.textContent = dAxis.format(new Date(hist[idx].t));
+    }
+    var ft = el("text", { x: (xSplit + xEnd) / 2, y: m.t + 14, "text-anchor": "middle", style: "fill:var(--accent-ink);font-weight:500" }, svg);
+    ft.textContent = "прогноза";
+
+    function path(pts, fx, fy) { return pts.map(function (p, i) { return (i ? "L" : "M") + fx(p).toFixed(1) + " " + fy(p).toFixed(1); }).join(" "); }
+    function band(lo, hi) {
+      return path(fan, function (p) { return x(p.t); }, function (p) { return y(p[hi]); }) + " " +
+        fan.slice().reverse().map(function (p) { return "L" + x(p.t).toFixed(1) + " " + y(p[lo]).toFixed(1); }).join(" ") + " Z";
+    }
+    el("path", { d: band("lo95", "hi95"), fill: "var(--fan-95)" }, svg);
+    el("path", { d: band("lo68", "hi68"), fill: "var(--fan-68)" }, svg);
+    var area = path(hist, function (p) { return x(p.t); }, function (p) { return y(p.c); }) +
+      " L" + x(last.t).toFixed(1) + " " + (m.t + ph) + " L" + x(first.t).toFixed(1) + " " + (m.t + ph) + " Z";
+    el("path", { d: area, fill: "var(--series-1-fill)" }, svg);
+    el("path", { d: path(hist, function (p) { return x(p.t); }, function (p) { return y(p.c); }), fill: "none", stroke: "var(--series-1)", "stroke-width": 2, "stroke-linejoin": "round" }, svg);
+    el("path", { d: path(fan, function (p) { return x(p.t); }, function (p) { return y(p.mid); }), fill: "none", stroke: "var(--accent)", "stroke-width": 2, "stroke-dasharray": "4 3" }, svg);
+    el("circle", { cx: x(last.t), cy: y(c0), r: 4.5, fill: "var(--series-1)", stroke: "var(--surface)", "stroke-width": 2 }, svg);
+    var endP = fan[fan.length - 1];
+    el("circle", { cx: x(endP.t), cy: y(endP.mid), r: 4.5, fill: "var(--accent)", stroke: "var(--surface)", "stroke-width": 2 }, svg);
+
+    var cross = el("line", { y1: m.t, y2: m.t + ph, stroke: "var(--ink-3)", "stroke-width": 1, "stroke-dasharray": "2 3", visibility: "hidden" }, svg);
+    var dot = el("circle", { r: 5, fill: "var(--series-1)", stroke: "var(--surface)", "stroke-width": 2, visibility: "hidden" }, svg);
+    var hit = el("rect", { x: m.l, y: m.t, width: pw, height: ph, fill: "transparent", style: "cursor:crosshair" }, svg);
+    box.appendChild(svg);
+    var tip = tooltip(box);
+    function move(evt) {
+      var r = svg.getBoundingClientRect();
+      var px = (evt.clientX - r.left) * (W / r.width);
+      if (px >= xSplit) {
+        cross.setAttribute("x1", x(endP.t)); cross.setAttribute("x2", x(endP.t));
+        dot.setAttribute("cx", x(endP.t)); dot.setAttribute("cy", y(endP.mid)); dot.setAttribute("fill", "var(--accent)");
+        tip.innerHTML = "<b>Прогноза за " + fdate(Date.parse(P.target_close_time) - barMs) + "</b>" +
+          '<div class="row"><span>Очаквана</span><span>' + usd(P.expected_price) + "</span></div>" +
+          '<div class="row"><span>68%</span><span>' + usd(P.range_68[0]) + " – " + usd(P.range_68[1]) + "</span></div>" +
+          '<div class="row"><span>95%</span><span>' + usd(P.range_95[0]) + " – " + usd(P.range_95[1]) + "</span></div>";
+        px = x(endP.t);
+      } else {
+        var best = 0, bd = Infinity;
+        hist.forEach(function (p, i) { var d = Math.abs(x(p.t) - px); if (d < bd) { bd = d; best = i; } });
+        var p = hist[best], prev = hist[best - 1];
+        cross.setAttribute("x1", x(p.t)); cross.setAttribute("x2", x(p.t));
+        dot.setAttribute("cx", x(p.t)); dot.setAttribute("cy", y(p.c)); dot.setAttribute("fill", "var(--series-1)");
+        tip.innerHTML = "<b>" + fdate(p.t) + "</b>" +
+          '<div class="row"><span>Затваряне</span><span>' + usd(p.c, 2) + "</span></div>" +
+          (prev ? '<div class="row"><span>Промяна</span><span>' + pct(p.c / prev.c - 1, 2, true) + "</span></div>" : "");
+        px = x(p.t);
+      }
+      cross.setAttribute("visibility", "visible"); dot.setAttribute("visibility", "visible");
+      tip.hidden = false;
+      placeTip(tip, box, px * (r.width / W), (parseFloat(dot.getAttribute("cy"))) * (r.height / H));
+    }
+    function leave() { cross.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); tip.hidden = true; }
+    hit.addEventListener("pointermove", move);
+    hit.addEventListener("pointerdown", move);
+    hit.addEventListener("pointerleave", leave);
+  }
+
+  function drawEquity() {
+    var box = document.getElementById("equity-chart");
+    if (!box || !BT) return;
+    box.innerHTML = "";
+    var W = Math.max(300, box.clientWidth), H = W < 560 ? 220 : 260;
+    var m = { t: 12, r: 64, b: 30, l: 4 };
+    var pts = BT.equity.map(function (d) { return { t: Date.parse(d.t), s: d.s - 1, b: d.b - 1 }; });
+    var pw = W - m.l - m.r, ph = H - m.t - m.b;
+    var t0 = pts[0].t, t1 = pts[pts.length - 1].t;
+    var vals = pts.map(function (p) { return p.s; }).concat(pts.map(function (p) { return p.b; }), [0]);
+    var ymin = Math.min.apply(null, vals), ymax = Math.max.apply(null, vals);
+    var pad = (ymax - ymin) * 0.08; ymin -= pad; ymax += pad;
+    function x(t) { return m.l + (t - t0) / (t1 - t0) * pw; }
+    function y(v) { return m.t + (1 - (v - ymin) / (ymax - ymin)) * ph; }
+    var svg = el("svg", { viewBox: "0 0 " + W + " " + H, width: W, height: H, role: "img", "aria-label": "Доходност на стратегията спрямо купи и дръж" });
+    niceTicks(ymin, ymax, 4).forEach(function (v) {
+      el("line", { x1: m.l, x2: m.l + pw, y1: y(v), y2: y(v), stroke: Math.abs(v) < 1e-9 ? "var(--ink-3)" : "var(--grid)", "stroke-width": 1 }, svg);
+      var tx = el("text", { x: m.l + 2, y: y(v) - 5 }, svg); tx.textContent = pct(v, 0, true);
+    });
+    var nX = W < 560 ? 3 : 5;
+    for (var k = 0; k < nX; k++) {
+      var idx = Math.round(k * (pts.length - 1) / nX);
+      var tt = el("text", { x: x(pts[idx].t), y: H - 8, "text-anchor": k === 0 ? "start" : "middle" }, svg);
+      tt.textContent = dAxis.format(new Date(pts[idx].t));
+    }
+    function line(key) { return pts.map(function (p, i) { return (i ? "L" : "M") + x(p.t).toFixed(1) + " " + y(p[key]).toFixed(1); }).join(" "); }
+    el("path", { d: line("b"), fill: "none", stroke: "var(--series-2)", "stroke-width": 2, "stroke-linejoin": "round" }, svg);
+    el("path", { d: line("s"), fill: "none", stroke: "var(--series-1)", "stroke-width": 2, "stroke-linejoin": "round" }, svg);
+    var endS = pts[pts.length - 1];
+    var ys = y(endS.s), yb = y(endS.b);
+    if (Math.abs(ys - yb) < 16) { var mid = (ys + yb) / 2, dir = ys <= yb ? -1 : 1; ys = mid + dir * 8; yb = mid - dir * 8; }
+    [["s", "var(--series-1)", ys, "стратегия"], ["b", "var(--series-2)", yb, "купи и дръж"]].forEach(function (d) {
+      el("circle", { cx: x(endS.t), cy: y(endS[d[0]]), r: 4, fill: d[1], stroke: "var(--surface)", "stroke-width": 2 }, svg);
+    });
+    var cross = el("line", { y1: m.t, y2: m.t + ph, stroke: "var(--ink-3)", "stroke-width": 1, "stroke-dasharray": "2 3", visibility: "hidden" }, svg);
+    var hit = el("rect", { x: m.l, y: m.t, width: pw, height: ph, fill: "transparent", style: "cursor:crosshair" }, svg);
+    box.appendChild(svg);
+    var tip = tooltip(box);
+    function move(evt) {
+      var r = svg.getBoundingClientRect();
+      var px = (evt.clientX - r.left) * (W / r.width);
+      var best = 0, bd = Infinity;
+      pts.forEach(function (p, i) { var dd = Math.abs(x(p.t) - px); if (dd < bd) { bd = dd; best = i; } });
+      var p = pts[best];
+      cross.setAttribute("x1", x(p.t)); cross.setAttribute("x2", x(p.t)); cross.setAttribute("visibility", "visible");
+      tip.innerHTML = "<b>" + fdate(p.t) + "</b>" +
+        '<div class="row"><span><i class="sw" style="background:var(--series-1)"></i> Стратегия</span><span>' + pct(p.s, 1, true) + "</span></div>" +
+        '<div class="row"><span><i class="sw" style="background:var(--series-2)"></i> Купи и дръж</span><span>' + pct(p.b, 1, true) + "</span></div>";
+      tip.hidden = false;
+      placeTip(tip, box, x(p.t) * (r.width / W), Math.min(y(p.s), y(p.b)) * (r.height / H));
+    }
+    hit.addEventListener("pointermove", move);
+    hit.addEventListener("pointerdown", move);
+    hit.addEventListener("pointerleave", function () { cross.setAttribute("visibility", "hidden"); tip.hidden = true; });
+    // direct end labels in the right margin, drawn after the tooltip layer so they stay readable
+    [["var(--series-1)", ys, pct(endS.s, 1, true)], ["var(--series-2)", yb, pct(endS.b, 1, true)]].forEach(function (d) {
+      var t = el("text", { x: x(endS.t) + 10, y: d[1] + 4, style: "font-weight:500;fill:var(--ink-2)" }, svg);
+      t.textContent = d[2];
+    });
+  }
+
+  function drawAll() { drawPrice(); drawEquity(); }
+  drawAll();
+  var lastW = app.clientWidth, raf = 0;
+  if (window.ResizeObserver) {
+    new ResizeObserver(function () {
+      if (app.clientWidth === lastW) return;
+      lastW = app.clientWidth;
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(drawAll);
+    }).observe(app);
+  }
+})();
+</script>
