@@ -220,6 +220,8 @@
     line-height: 1;
     font-variant-numeric: tabular-nums;
   }
+  .big.long { font-size: clamp(26px, 3.2vw, 32px); }
+  .verdict > div > * { min-width: 0; }
   .gauge { position: relative; height: 10px; border-radius: 5px; background: var(--surface-2); margin-top: 6px; }
   .gauge .fill { position: absolute; top: 0; bottom: 0; border-radius: 5px; }
   .gauge .mid { position: absolute; left: 50%; top: -4px; bottom: -4px; width: 2px; background: var(--ink-3); }
@@ -349,7 +351,12 @@
   function nf(d) { return new Intl.NumberFormat("bg-BG", { minimumFractionDigits: d, maximumFractionDigits: d }); }
   function usd(v, d) {
     if (v == null || isNaN(v)) return "—";
-    if (d == null) d = Math.abs(v) >= 1000 ? 0 : 2;
+    if (d == null) {
+      // Same rule as report._price: about four significant digits below $1, so meme coins
+      // priced in millionths do not collapse to "$0,00".
+      var a = Math.abs(v);
+      d = a >= 1000 ? 0 : a >= 1 || a === 0 ? 2 : Math.min(12, Math.max(2, 3 - Math.floor(Math.log10(a))));
+    }
     return "$" + nf(d).format(v);
   }
   function pct(v, d, sign) {
@@ -396,6 +403,7 @@
   var horizonText = M.horizon === 1 ? "1 период напред" : M.horizon + " периода напред";
 
   var expChange = Math.expm1(P.exp_return);
+  var expPrice = usd(P.expected_price);
   var sig = SIGNAL[P.signal] || SIGNAL.HOLD;
   var edgeChip = P.has_edge === true
     ? '<span class="chip good">✓ Доказано предимство в бектеста</span>'
@@ -419,9 +427,9 @@
       '<div class="gauge-scale"><span>0% спад</span><span>50%</span><span>100% ръст</span></div>' +
     '</div>' +
     '<div><span class="eyebrow">Очаквана цена</span>' +
-      '<span class="big num">' + usd(P.expected_price) + '</span>' +
+      '<span class="big num' + (expPrice.length > 9 ? " long" : "") + '">' + expPrice + '</span>' +
       '<dl class="kv">' +
-        '<dt>Сега</dt><dd>' + usd(P.last_close, 2) + '</dd>' +
+        '<dt>Сега</dt><dd>' + usd(P.last_close) + '</dd>' +
         '<dt>Очаквана промяна</dt><dd class="' + (expChange >= 0 ? "up-ink" : "down-ink") + '">' + pct(expChange, 2, true) + '</dd>' +
         '<dt>Диапазон 68%</dt><dd>' + usd(P.range_68[0]) + ' – ' + usd(P.range_68[1]) + '</dd>' +
         '<dt>Диапазон 95%</dt><dd>' + usd(P.range_95[0]) + ' – ' + usd(P.range_95[1]) + '</dd>' +
@@ -599,9 +607,12 @@
     var svg = el("svg", { viewBox: "0 0 " + W + " " + H, width: W, height: H, role: "img",
       "aria-label": "Цена на " + M.product + " за последните " + hist.length + " свещи и прогнозен коридор" });
     el("rect", { x: xSplit, y: m.t, width: xEnd - xSplit, height: ph, fill: "var(--surface-2)", rx: 6 }, svg);
-    niceTicks(ymin, ymax, H < 300 ? 4 : 5).forEach(function (v) {
+    var yTicks = niceTicks(ymin, ymax, H < 300 ? 4 : 5);
+    var yStep = yTicks.length > 1 ? yTicks[1] - yTicks[0] : Math.abs(ymax) || 1;
+    var yDigits = Math.min(12, Math.max(0, -Math.floor(Math.log10(yStep))));
+    yTicks.forEach(function (v) {
       el("line", { x1: m.l, x2: xEnd, y1: y(v), y2: y(v), stroke: "var(--grid)", "stroke-width": 1 }, svg);
-      var tx = el("text", { x: xEnd + 8, y: y(v) + 4 }, svg); tx.textContent = usd(v, 0);
+      var tx = el("text", { x: xEnd + 8, y: y(v) + 4 }, svg); tx.textContent = usd(v, yDigits);
     });
     var nX = W < 560 ? 3 : 5;
     for (var k = 0; k < nX; k++) {
@@ -651,7 +662,7 @@
         cross.setAttribute("x1", x(p.t)); cross.setAttribute("x2", x(p.t));
         dot.setAttribute("cx", x(p.t)); dot.setAttribute("cy", y(p.c)); dot.setAttribute("fill", "var(--series-1)");
         tip.innerHTML = "<b>" + fdate(p.t) + "</b>" +
-          '<div class="row"><span>Затваряне</span><span>' + usd(p.c, 2) + "</span></div>" +
+          '<div class="row"><span>Затваряне</span><span>' + usd(p.c) + "</span></div>" +
           (prev ? '<div class="row"><span>Промяна</span><span>' + pct(p.c / prev.c - 1, 2, true) + "</span></div>" : "");
         px = x(p.t);
       }
