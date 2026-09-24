@@ -50,31 +50,53 @@ pip install -r requirements.txt      # numpy, pandas, scikit-learn, requests
 ## Употреба
 
 ```bash
-# Прогноза за BTC, ETH и SOL, дневни свещи (изтегля 2 години история при първото пускане)
+# Прогноза за всички от watchlist.txt (56 криптовалути), дневни свещи + HTML табло
 python -m crypto_bot predict --html reports/dashboard.html
 
-# Само един актив, часови свещи, прогноза 4 часа напред + журнал
-python -m crypto_bot predict --product ETH-USD --granularity 1h --horizon 4 --log predictions_log.csv
+# Всички активни USD двойки в Coinbase, без филтър
+python -m crypto_bot predict --product all
+
+# Само няколко актива, часови свещи, прогноза 4 часа напред + журнал
+python -m crypto_bot predict --product ETH-USD,SOL-USD --granularity 1h --horizon 4 --log predictions_log.csv
 
 # Без интернет – с приложените реални данни от Coinbase и заседанията на Фед
-python -m crypto_bot predict --offline --events-file data/events_fomc.csv --html reports/dashboard.html
+python -m crypto_bot predict --offline --product BTC-USD,ETH-USD,SOL-USD \
+    --events-file data/events_fomc.csv --html reports/dashboard.html
 
+python -m crypto_bot fetch                                  # изтегли/обнови данните за целия списък
 python -m crypto_bot events   --offline --product SOL-USD   # какво е следвало след всяко събитие
-python -m crypto_bot backtest --offline --horizon 3         # walk-forward проверка за трите актива
-python -m crypto_bot fetch    --product BTC-USD,ETH-USD,SOL-USD,XRP-USD --granularity 6h --days 365
+python -m crypto_bot backtest --horizon 3                   # walk-forward проверка за целия списък
 python -m crypto_bot evaluate --log predictions_log.csv     # колко точни са били минали прогнози
 python -m crypto_bot watch    --granularity 1h --interval 3600 --html reports/live.html
 ```
 
-Основни опции: `--product` (един или няколко, разделени със запетая; по подразбиране
-`BTC-USD,ETH-USD,SOL-USD`), `--offline` (само кешираните файлове в `--cache-dir`),
-`--csv ФАЙЛ` (един актив; продуктът се разпознава от име като `ETH-USD_1d.csv`),
+Основни опции: `--product` (един или няколко, разделени със запетая, или `all`; без него се
+чете `--watchlist`, по подразбиране `watchlist.txt`), `--offline` (само кешираните файлове в
+`--cache-dir`), `--csv ФАЙЛ` (един актив; продуктът се разпознава от име като
+`ETH-USD_1d.csv`), `--jobs N` (паралелни процеси, по подразбиране според ядрата),
 `--granularity {1m,5m,15m,1h,6h,1d}`, `--horizon N`, `--events-file`, `--threshold 0.02`
-(отстъп от 50% за сигнал), `--fee 0.001`, `--allow-short`, `--no-backtest` (по-бързо), `--json`.
+(отстъп от 50% за сигнал), `--fee 0.001`, `--allow-short`, `--no-backtest` (по-бързо),
+`--details` (пълен отчет за всеки актив), `--json`.
 
-С няколко актива текстовият изход започва с обобщена таблица, JSON изходът е
-`{"assets": [...]}`, а HTML таблото има карта за всеки актив, която превключва детайлния
-изглед (линк към конкретен актив: `dashboard.html#eth`).
+С няколко актива текстовият изход е обобщена таблица, JSON изходът е
+`{"assets": [...], "skipped": [...]}`, а HTML таблото има карти (до 4 актива) или таблица с
+търсене и сортиране (повече активи), която превключва подробния изглед (линк към конкретен
+актив: `dashboard.html#eth`). Актив без данни или с по-малко от 230 затворени свещи (нов
+листинг) се пропуска с обяснение, без да спира останалите.
+
+### Списък за следене
+
+`watchlist.txt` съдържа 56 криптовалути: по един продукт на ред, `#` започва коментар.
+Редактирай го свободно. Списъкът е съставен на 24.09.2026 така:
+
+- всички активни спот двойки срещу USD в Coinbase (121);
+- без стейбълкойни (USDT, USDC, DAI, PYUSD и др.): цената им е вързана за долара;
+- оборот за 24 ч. поне $1 млн., или място в топ 100 по пазарна капитализация и оборот поне
+  $250 хил.; по-слабо търгуваните двойки имат шумни свещи с дупки.
+
+BNB, TRX, UNI, AAVE, SHIB и ETC не се търгуват срещу USD в Coinbase и затова липсват.
+Пълната вселена без филтър е достъпна с `--product all`. За 56 актива с бектест на 4 ядра
+прогнозата отнема около 2–3 минути, а първото изтегляне на данните – около минута.
 
 ### Външни събития
 
@@ -139,9 +161,11 @@ crypto_bot/
   bot.py         оркестрация: данни → модели → прогноза → сигнал
   journal.py     журнал на прогнозите и оценка спрямо реалността
   report.py      текст, JSON и HTML табло
+  watchlist.py   списък за следене, всички USD двойки, филтър на стейбълкойни
   cli.py         команди fetch / events / backtest / predict / evaluate / watch
 data/            реални свещи от Coinbase (BTC, ETH, SOL) и календар на FOMC
-tests/           41 теста (pytest)
+watchlist.txt    56-те криптовалути, които ботът следи по подразбиране
+tests/           49 теста (pytest)
 ```
 
 ## Тестове

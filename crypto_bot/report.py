@@ -39,6 +39,14 @@ def _clean(obj):
     return obj
 
 
+def _thin(frame: pd.DataFrame, max_points: int) -> pd.DataFrame:
+    """Evenly spaced rows (always keeping the last) so a long curve stays light in the page."""
+    if len(frame) <= max_points:
+        return frame
+    idx = np.unique(np.linspace(0, len(frame) - 1, max_points).round().astype(int))
+    return frame.iloc[idx]
+
+
 def to_payload(result: BotResult, history_bars: int = 120) -> dict:
     ds = result.dataset
     frame = ds.frame
@@ -55,10 +63,7 @@ def to_payload(result: BotResult, history_bars: int = 120) -> dict:
             "disclaimer": DISCLAIMER,
         },
         "prediction": result.prediction.to_dict(),
-        "history": [
-            {"t": ts, "o": r.open, "h": r.high, "l": r.low, "c": r.close, "v": r.volume}
-            for ts, r in hist[["open", "high", "low", "close", "volume"]].iterrows()
-        ],
+        "history": [{"t": ts, "c": c} for ts, c in hist["close"].items()],  # the chart only draws closes
         "volatility": result.volatility,
         "events": {
             "base_rate": result.event_table.attrs.get("base_rate"),
@@ -80,7 +85,7 @@ def to_payload(result: BotResult, history_bars: int = 120) -> dict:
             "last_test": bt.predictions.index[-1],
             "equity": [
                 {"t": ts, "s": r.strategy, "b": r.buy_and_hold}
-                for ts, r in bt.equity[["strategy", "buy_and_hold"]].iterrows()
+                for ts, r in _thin(bt.equity[["strategy", "buy_and_hold"]], 300).iterrows()
             ],
         }
     return _clean(payload)
@@ -90,13 +95,25 @@ def _as_list(results: BotResult | list[BotResult]) -> list[BotResult]:
     return list(results) if isinstance(results, (list, tuple)) else [results]
 
 
-def to_multi_payload(results: BotResult | list[BotResult]) -> dict:
-    return {"assets": [to_payload(r) for r in _as_list(results)]}
+def to_multi_payload(
+    results: BotResult | list[BotResult], skipped: list[tuple[str, str]] | None = None
+) -> dict:
+    return {
+        "assets": [to_payload(r) for r in _as_list(results)],
+        "skipped": [{"product": product, "reason": reason} for product, reason in (skipped or [])],
+    }
 
 
-def to_json(results: BotResult | list[BotResult], indent: int | None = 2) -> str:
-    """One asset -> its payload; several -> {"assets": [...]}."""
-    payload = to_payload(results) if isinstance(results, BotResult) else to_multi_payload(results)
+def to_json(
+    results: BotResult | list[BotResult],
+    skipped: list[tuple[str, str]] | None = None,
+    indent: int | None = 2,
+) -> str:
+    """One asset -> its payload; several -> {"assets": [...], "skipped": [...]}."""
+    if isinstance(results, BotResult) and not skipped:
+        payload = to_payload(results)
+    else:
+        payload = to_multi_payload(results, skipped)
     return json.dumps(payload, ensure_ascii=False, indent=indent)
 
 
@@ -106,24 +123,34 @@ def _pct(x, digits: int = 1, sign: bool = False) -> str:
     return f"{x * 100:+.{digits}f}%" if sign else f"{x * 100:.{digits}f}%"
 
 
-def _money(x: float) -> str:
-    return f"${x:,.2f}"
+def _price(x: float) -> str:
+    """Enough significant digits for anything from BTC to meme coins priced in millionths."""
+    if x >= 1000:
+        return f"${x:,.0f}"
+    if x >= 1:
+        return f"${x:,.2f}"
+    return f"${x:.{max(2, -int(math.floor(math.log10(x))) + 3)}f}" if x > 0 else "$0"
 
 
-def format_summary(results: list[BotResult]) -> str:
-    """One line per asset, so several forecasts can be compared at a glance."""
+def format_summary(results: list[BotResult], skipped: list[tuple[str, str]] | None = None) -> str:
+    """One line per asset, so many forecasts can be compared at a glance."""
     lines = [
-        f"{'актив':<9} {'цена':>12} {'ръст':>7} {'очаквано':>9} {'коридор 68%':>25}  сигнал",
+        f"{'актив':<13} {'цена':>13} {'ръст':>6} {'очаквано':>9} {'коридор 68%':>29}  сигнал",
     ]
     for r in results:
         p = r.prediction
         edge = "" if p.has_edge is None else (" ✓ предимство" if p.has_edge else " (без предимство)")
-        corridor = f"{_money(p.range_68[0])} – {_money(p.range_68[1])}"
+        corridor = f"{_price(p.range_68[0])} – {_price(p.range_68[1])}"
         lines.append(
-            f"{p.product:<9} {_money(p.last_close):>12} {_pct(p.prob_up):>7} "
-            f"{_pct(math.expm1(p.exp_return), 2, sign=True):>9} {corridor:>25}  "
+            f"{p.product:<13} {_price(p.last_close):>13} {_pct(p.prob_up):>6} "
+            f"{_pct(math.expm1(p.exp_return), 2, sign=True):>9} {corridor:>29}  "
             f"{SIGNAL_LABELS.get(p.signal, p.signal)}{edge}"
         )
+    with_edge = sum(1 for r in results if r.prediction.has_edge)
+    lines.append(f"Прогнози: {len(results)} · с доказано предимство в бектеста: {with_edge}")
+    if skipped:
+        lines.append(f"Пропуснати ({len(skipped)}):")
+        lines.extend(f"  {product}: {reason}" for product, reason in skipped)
     return "\n".join(lines)
 
 
@@ -133,13 +160,13 @@ def format_text(result: BotResult) -> str:
     lines = []
     add = lines.append
     add(f"═══ {p.product} · свещи {p.granularity} · прогноза {p.horizon} период(а) напред ═══")
-    add(f"Последна затворена свещ: {p.as_of}   Цена на затваряне: {_money(p.last_close)}")
+    add(f"Последна затворена свещ: {p.as_of}   Цена на затваряне: {_price(p.last_close)}")
     add(f"Прогнозата е за затварянето в: {p.target_close_time}")
     add("")
     add(f"  Вероятност за ръст:   {_pct(p.prob_up)}")
-    add(f"  Очаквана промяна:     {_pct(math.expm1(p.exp_return), 2, sign=True)}  →  {_money(p.expected_price)}")
-    add(f"  Диапазон 68%:         {_money(p.range_68[0])} – {_money(p.range_68[1])}")
-    add(f"  Диапазон 95%:         {_money(p.range_95[0])} – {_money(p.range_95[1])}")
+    add(f"  Очаквана промяна:     {_pct(math.expm1(p.exp_return), 2, sign=True)}  →  {_price(p.expected_price)}")
+    add(f"  Диапазон 68%:         {_price(p.range_68[0])} – {_price(p.range_68[1])}")
+    add(f"  Диапазон 95%:         {_price(p.range_95[0])} – {_price(p.range_95[1])}")
     add(f"  Сигнал:               {SIGNAL_LABELS.get(p.signal, p.signal)}  ({p.signal_reason})")
     add("")
     add("Гласове на моделите (вероятност за ръст · тегло):")
@@ -208,10 +235,14 @@ def _template() -> str:
     return resources.files("crypto_bot").joinpath("templates/dashboard.html").read_text(encoding="utf-8")
 
 
-def render_html(results: BotResult | list[BotResult], standalone: bool = True) -> str:
+def render_html(
+    results: BotResult | list[BotResult],
+    standalone: bool = True,
+    skipped: list[tuple[str, str]] | None = None,
+) -> str:
     """Fill the dashboard template with one or more results. `standalone` adds the
     document skeleton so the file opens correctly straight from disk."""
-    data = json.dumps(to_multi_payload(results), ensure_ascii=False).replace("</", "<\\/")
+    data = json.dumps(to_multi_payload(results, skipped), ensure_ascii=False).replace("</", "<\\/")
     body = _template().replace("/*__BOT_DATA__*/null", data)
     if not standalone:
         return body

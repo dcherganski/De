@@ -163,6 +163,36 @@
     .ac-meta span + span, .ac-range { display: none; }
   }
   .detail { display: grid; gap: 28px; }
+  .detail:focus { outline: none; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  .list-tools { display: flex; gap: 12px; }
+  .list-tools input {
+    flex: 1; max-width: 320px; font: inherit; color: var(--ink); background: var(--surface-2);
+    border: 1px solid var(--rule); border-radius: 8px; padding: 7px 10px;
+  }
+  .list-tools input:focus-visible { outline: 2px solid var(--series-1); outline-offset: 1px; }
+  .list-scroll { max-height: 440px; overflow: auto; }
+  .assets-table thead th { position: sticky; top: 0; background: var(--surface); z-index: 1; }
+  .assets-table th button.sort {
+    appearance: none; font: inherit; color: inherit; letter-spacing: inherit; text-transform: inherit;
+    background: none; border: 0; padding: 0; cursor: pointer;
+  }
+  .assets-table th button.sort::after { content: " ↕"; opacity: 0.45; }
+  .assets-table th[aria-sort="ascending"] button.sort::after { content: " ↑"; opacity: 1; }
+  .assets-table th[aria-sort="descending"] button.sort::after { content: " ↓"; opacity: 1; }
+  .assets-table td:first-child { min-width: 0; }
+  .assets-table tbody tr { cursor: pointer; }
+  .assets-table tbody tr:hover td { background: var(--surface-2); }
+  .assets-table tbody tr.is-current td { background: var(--fan-95); }
+  .row-btn {
+    appearance: none; font: inherit; font-family: var(--font-display); font-weight: 700; font-size: 13.5px;
+    color: var(--ink); background: none; border: 0; padding: 0; cursor: pointer;
+  }
+  .row-btn:focus-visible { outline: 2px solid var(--series-1); outline-offset: 2px; border-radius: 3px; }
+  .skipped { font-size: 13px; color: var(--ink-3); }
+  .skipped summary { cursor: pointer; width: fit-content; }
+  .skipped ul { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 2px; }
+  .skipped b { color: var(--ink-2); font-weight: 600; }
   .asset-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; }
   .asset-title { font-family: var(--font-display); font-weight: 700; font-size: clamp(26px, 4.5vw, 34px); line-height: 1.1; }
   .asset-title .quote { color: var(--ink-3); font-weight: 500; }
@@ -703,16 +733,19 @@
 
   // ---------- shell: one card per asset, detail of the selected one ----------
   var first = ASSETS[0], F = dateFormats(first.meta.granularity);
+  var SKIPPED = (DATA && DATA.skipped) || [];
+  var MANY = ASSETS.length > 4;
   var shell = '<header class="masthead"><div>' +
     '<div class="eyebrow">Крипто прогнозен бот</div>' +
     '<h1>Прогноза за ' + F.full(Date.parse(first.prediction.target_close_time) - F.barMs) + '</h1>' +
     '<p class="sub">' + esc(GRAN_TEXT[first.meta.granularity] || first.meta.granularity) + ' свещи · ' +
-      ASSETS.map(function (a) { return esc(ticker(a.meta.product)); }).join(", ") + ' · данни от Coinbase</p>' +
+      (MANY ? ASSETS.length + ' актива' : ASSETS.map(function (a) { return esc(ticker(a.meta.product)); }).join(", ")) +
+      ' · данни от Coinbase</p>' +
     '</div><div class="stamp">' +
     '<span>Последна затворена свещ: <b class="num">' + F.full(Date.parse(first.prediction.as_of)) + '</b></span>' +
     '<span>Прогнозата е за затварянето: <b class="num">' + F.full(Date.parse(first.prediction.target_close_time)) + ' UTC</b></span>' +
     '</div></header>';
-  if (ASSETS.length > 1) {
+  if (ASSETS.length > 1 && !MANY) {
     shell += '<div class="assets" role="tablist" aria-label="Активи">' + ASSETS.map(function (a, i) {
       var p = a.prediction, s = SIGNAL[p.signal] || SIGNAL.HOLD, upA = p.prob_up >= 0.5;
       return '<button type="button" class="asset-card" role="tab" id="tab-' + i + '" aria-controls="detail" data-i="' + i + '">' +
@@ -725,33 +758,116 @@
         '</button>';
     }).join("") + '</div>';
   }
-  shell += '<div class="detail" id="detail"' + (ASSETS.length > 1 ? ' role="tabpanel"' : "") + '></div>';
+  if (MANY) {
+    var withEdge = ASSETS.filter(function (a) { return a.prediction.has_edge; }).length;
+    shell += '<section class="section" aria-label="Всички активи"><div class="section-head"><h2>Всички активи</h2>' +
+      '<p>' + ASSETS.length + ' прогнози, ' + withEdge + ' с доказано предимство в бектеста. Избери ред за подробности; заглавията сортират.</p></div>' +
+      '<div class="panel"><div class="list-tools"><label class="sr-only" for="asset-filter">Търси актив</label>' +
+      '<input type="search" id="asset-filter" placeholder="Търси актив, напр. DOGE" autocomplete="off"></div>' +
+      '<div class="table-wrap list-scroll"><table class="assets-table"><thead><tr>' +
+      [["ticker", "Актив"], ["price", "Цена"], ["prob", "Ръст"], ["exp", "Очаквано"], ["vol", "σ"], [null, "Коридор 68%"], [null, "Сигнал"]]
+        .map(function (c) {
+          return c[0] ? '<th aria-sort="none"><button type="button" class="sort" data-key="' + c[0] + '">' + c[1] + '</button></th>' : '<th>' + c[1] + '</th>';
+        }).join("") +
+      '</tr></thead><tbody id="asset-rows"></tbody></table></div>' +
+      '<p class="muted" id="asset-empty" hidden>Няма актив с това име.</p></div></section>';
+  }
+  if (SKIPPED.length) {
+    shell += '<details class="skipped"><summary>Пропуснати активи (' + SKIPPED.length + ')</summary><ul>' +
+      SKIPPED.map(function (s) { return '<li><b>' + esc(ticker(s.product)) + '</b> ' + esc(s.reason) + '</li>'; }).join("") +
+      '</ul></details>';
+  }
+  shell += '<div class="detail" id="detail"' + (ASSETS.length > 1 && !MANY ? ' role="tabpanel"' : "") + ' tabindex="-1"></div>';
   app.innerHTML = shell;
 
   var detail = document.getElementById("detail");
   var tabs = Array.prototype.slice.call(app.querySelectorAll(".asset-card"));
   var redraw = function () {};
-  function select(i, focus) {
+  var current = 0;
+  var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function select(i, opts) {
+    opts = opts || {};
+    current = i;
     tabs.forEach(function (t, j) {
       t.setAttribute("aria-selected", j === i ? "true" : "false");
       t.tabIndex = j === i ? 0 : -1;
     });
     if (tabs[i]) {
       detail.setAttribute("aria-labelledby", tabs[i].id);
-      if (focus) tabs[i].focus();
+      if (opts.focus) tabs[i].focus();
     }
+    if (MANY) renderRows();
     redraw = renderAsset(ASSETS[i], detail);
     if (ASSETS.length > 1) {
       try { history.replaceState(null, "", "#" + ticker(ASSETS[i].meta.product).toLowerCase()); } catch (e) { /* sandboxed */ }
+    }
+    if (opts.scroll && detail.getBoundingClientRect().top > window.innerHeight * 0.6) {
+      detail.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
     }
   }
   tabs.forEach(function (t, i) {
     t.addEventListener("click", function () { select(i); });
     t.addEventListener("keydown", function (e) {
       var k = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
-      if (k) { e.preventDefault(); select((i + k + tabs.length) % tabs.length, true); }
+      if (k) { e.preventDefault(); select((i + k + tabs.length) % tabs.length, { focus: true }); }
     });
   });
+
+  // Overview table for many assets: filter + sort, a row selects the detail view.
+  var sortKey = null, sortDir = -1, filterText = "";
+  function sortValue(a, key) {
+    var p = a.prediction;
+    return key === "ticker" ? ticker(a.meta.product) : key === "price" ? p.last_close : key === "prob" ? p.prob_up
+      : key === "exp" ? p.exp_return : p.sigma;
+  }
+  function renderRows() {
+    var body = document.getElementById("asset-rows");
+    if (!body) return;
+    var idx = ASSETS.map(function (a, i) { return i; }).filter(function (i) {
+      return !filterText || ticker(ASSETS[i].meta.product).toLowerCase().indexOf(filterText) !== -1;
+    });
+    if (sortKey) {
+      idx.sort(function (x, y) {
+        var a = sortValue(ASSETS[x], sortKey), b = sortValue(ASSETS[y], sortKey);
+        return (a < b ? -1 : a > b ? 1 : 0) * sortDir;
+      });
+    }
+    body.innerHTML = idx.map(function (i) {
+      var a = ASSETS[i], p = a.prediction, s = SIGNAL[p.signal] || SIGNAL.HOLD, upA = p.prob_up >= 0.5, chg = Math.expm1(p.exp_return);
+      return '<tr data-i="' + i + '"' + (i === current ? ' class="is-current"' : "") + '>' +
+        '<td><button type="button" class="row-btn" data-i="' + i + '"' + (i === current ? ' aria-current="true"' : "") + '>' + esc(ticker(a.meta.product)) + '</button>' +
+          (p.has_edge ? ' <span class="tag-now">предимство</span>' : "") + '</td>' +
+        '<td>' + usd(p.last_close) + '</td>' +
+        '<td class="' + (upA ? "up-ink" : "down-ink") + '">' + (upA ? "▲ " : "▼ ") + pct(p.prob_up) + '</td>' +
+        '<td class="' + (chg >= 0 ? "up-ink" : "down-ink") + '">' + pct(chg, 2, true) + '</td>' +
+        '<td>' + pct(p.sigma, 1) + '</td>' +
+        '<td>' + usd(p.range_68[0]) + ' – ' + usd(p.range_68[1]) + '</td>' +
+        '<td><span class="ac-signal ' + s.cls + '"><span aria-hidden="true">' + s.icon + '</span> ' + s.text + '</span></td></tr>';
+    }).join("");
+    document.getElementById("asset-empty").hidden = idx.length > 0;
+  }
+  if (MANY) {
+    var rowsEl = document.getElementById("asset-rows");
+    rowsEl.addEventListener("click", function (e) {
+      var tr = e.target.closest("tr[data-i]");
+      if (tr) select(+tr.getAttribute("data-i"), { scroll: true });
+    });
+    document.getElementById("asset-filter").addEventListener("input", function (e) {
+      filterText = e.target.value.trim().toLowerCase();
+      renderRows();
+    });
+    Array.prototype.forEach.call(app.querySelectorAll("button.sort"), function (b) {
+      b.addEventListener("click", function () {
+        var key = b.getAttribute("data-key");
+        sortDir = sortKey === key ? -sortDir : (key === "ticker" ? 1 : -1);
+        sortKey = key;
+        Array.prototype.forEach.call(app.querySelectorAll("th[aria-sort]"), function (th) { th.setAttribute("aria-sort", "none"); });
+        b.parentNode.setAttribute("aria-sort", sortDir > 0 ? "ascending" : "descending");
+        renderRows();
+      });
+    });
+  }
+
   var wanted = (location.hash || "").replace("#", "").toLowerCase(), start = 0;
   ASSETS.forEach(function (a, i) { if (ticker(a.meta.product).toLowerCase() === wanted) start = i; });
   select(start);

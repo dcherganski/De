@@ -12,6 +12,7 @@ import requests
 GRANULARITIES = {"1m": 60, "5m": 300, "15m": 900, "1h": 3600, "6h": 21600, "1d": 86400}
 COLUMNS = ["open", "high", "low", "close", "volume"]
 EXCHANGE_URL = "https://api.exchange.coinbase.com/products/{product}/candles"
+PRODUCTS_URL = "https://api.exchange.coinbase.com/products"
 MAX_CANDLES_PER_REQUEST = 300
 
 
@@ -46,6 +47,12 @@ class CoinbaseClient:
         self.session.headers.setdefault("User-Agent", "crypto-bot/0.1")
         self.pause = pause
         self.timeout = timeout
+
+    def products(self) -> list[dict]:
+        """Every product listed on Coinbase Exchange (id, quote_currency, status, ...)."""
+        resp = self.session.get(PRODUCTS_URL, timeout=self.timeout)
+        resp.raise_for_status()
+        return resp.json()
 
     def candles(
         self,
