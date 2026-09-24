@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "crypto-bot"
+version = "0.1.0"
+description = "Crypto prediction bot: learns from past market events and forecasts the next candle"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.26",
+    "pandas>=2.1",
+    "scikit-learn>=1.4",
+    "requests>=2.31",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[project.scripts]
+crypto-bot = "crypto_bot.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["crypto_bot*"]
+
+[tool.setuptools.package-data]
+crypto_bot = ["templates/*.html"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
