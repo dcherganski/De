@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 
 from .backtest import BacktestResult, run_backtest
-from .data import CoinbaseClient, drop_incomplete, granularity_seconds, load_csv, update_cache
+from .data import CoinbaseClient, cache_path, drop_incomplete, granularity_seconds, load_csv, update_cache
 from .events import (
     active_events,
     event_label,
@@ -38,6 +38,7 @@ class BotConfig:
     fee: float = 0.001
     long_only: bool = True
     backtest: bool = True
+    offline: bool = False  # use only the cached CSV in cache_dir, never call the API
 
 
 @dataclass
@@ -90,6 +91,11 @@ class PredictionBot:
         cfg = self.config
         if cfg.csv:
             df = load_csv(cfg.csv)
+        elif cfg.offline:
+            path = cache_path(cfg.product, cfg.granularity, cfg.cache_dir)
+            if not path.exists():
+                raise FileNotFoundError(f"няма кеширани данни за {cfg.product} {cfg.granularity}: {path}")
+            df = load_csv(path)
         else:
             df = update_cache(cfg.product, cfg.granularity, cfg.cache_dir, cfg.days, client=self.client)
         return drop_incomplete(df, cfg.granularity, now=now)

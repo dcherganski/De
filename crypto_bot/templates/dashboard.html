@@ -121,7 +121,7 @@
   .masthead h1 {
     font-family: var(--font-display);
     font-weight: 700;
-    font-size: clamp(30px, 6vw, 46px);
+    font-size: clamp(26px, 5vw, 40px);
     line-height: 1.05;
     letter-spacing: -0.01em;
   }
@@ -129,6 +129,44 @@
   .masthead .sub { color: var(--ink-2); margin-top: 8px; }
   .stamp { text-align: right; font-size: 12.5px; color: var(--ink-3); display: grid; gap: 2px; }
   @media (max-width: 560px) { .stamp { text-align: left; } }
+
+  /* Asset switcher */
+  .assets { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+  .asset-card {
+    appearance: none; font: inherit; color: inherit; text-align: left; cursor: pointer;
+    background: var(--surface); border: 1px solid var(--rule); border-radius: 14px;
+    padding: 14px 16px; display: grid; gap: 8px; box-shadow: var(--shadow);
+    transition: border-color 0.15s ease;
+  }
+  .asset-card:hover { border-color: var(--ink-3); }
+  .asset-card[aria-selected="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent), var(--shadow); }
+  .asset-card:focus-visible { outline: 2px solid var(--series-1); outline-offset: 2px; }
+  .ac-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .ac-ticker { font-family: var(--font-display); font-weight: 700; font-size: 20px; letter-spacing: 0.01em; }
+  .ac-signal { font-size: 11.5px; font-weight: 600; letter-spacing: 0.06em; padding: 2px 9px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+  .ac-signal.up { color: var(--up-ink); }
+  .ac-signal.down { color: var(--down-ink); }
+  .ac-signal.hold { color: var(--ink-2); }
+  .ac-price { font-family: var(--font-mono); font-size: 22px; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .ac-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; font-size: 13px; color: var(--ink-2); }
+  .ac-meta b { font-family: var(--font-mono); font-weight: 500; font-variant-numeric: tabular-nums; }
+  .ac-range { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+  @media (prefers-reduced-motion: reduce) { .asset-card { transition: none; } }
+  @media (max-width: 560px) {
+    .assets { grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 8px; }
+    .asset-card { padding: 10px 12px; gap: 6px; }
+    .ac-top { flex-wrap: wrap; gap: 4px; }
+    .ac-ticker { font-size: 16px; }
+    .ac-signal { font-size: 10px; padding: 1px 6px; }
+    .ac-price { font-size: 16px; }
+    .ac-meta { font-size: 12px; }
+    .ac-meta span + span, .ac-range { display: none; }
+  }
+  .detail { display: grid; gap: 28px; }
+  .asset-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; }
+  .asset-title { font-family: var(--font-display); font-weight: 700; font-size: clamp(26px, 4.5vw, 34px); line-height: 1.1; }
+  .asset-title .quote { color: var(--ink-3); font-weight: 500; }
+  .asset-head .sub { color: var(--ink-2); }
 
   /* Verdict */
   .verdict {
@@ -268,16 +306,14 @@
 <script>
 (function () {
   "use strict";
-  var D = /*__BOT_DATA__*/null;
+  var DATA = /*__BOT_DATA__*/null;
   var app = document.getElementById("app");
-  if (!D) {
+  var ASSETS = DATA ? (DATA.assets || [DATA]) : [];
+  if (!ASSETS.length) {
     app.innerHTML = '<p class="empty">Няма данни. Генерирай отчета с <code>python -m crypto_bot predict --html reports/dashboard.html</code>.</p>';
     return;
   }
-  var P = D.prediction, M = D.meta, BT = D.backtest;
   var BAR = { "1m": 60, "5m": 300, "15m": 900, "1h": 3600, "6h": 21600, "1d": 86400 };
-  var barMs = (BAR[M.granularity] || 86400) * 1000;
-  var intraday = barMs < 86400000;
   var SVGNS = "http://www.w3.org/2000/svg";
 
   function nf(d) { return new Intl.NumberFormat("bg-BG", { minimumFractionDigits: d, maximumFractionDigits: d }); }
@@ -292,13 +328,18 @@
     var s = v < 0 ? "−" : (sign && v > 0 ? "+" : "");
     return s + nf(d).format(Math.abs(v) * 100) + "%";
   }
-  var dFull = new Intl.DateTimeFormat("bg-BG", intraday
-    ? { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "UTC" }
-    : { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" });
-  var dAxis = new Intl.DateTimeFormat("bg-BG", intraday
-    ? { day: "2-digit", month: "2-digit", hour: "2-digit", timeZone: "UTC" }
-    : { day: "numeric", month: "short", timeZone: "UTC" });
-  function fdate(t) { return dFull.format(new Date(t)); }
+  function dateFormats(granularity) {
+    var barMs = (BAR[granularity] || 86400) * 1000, intraday = barMs < 86400000;
+    var full = new Intl.DateTimeFormat("bg-BG", intraday
+      ? { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "UTC" }
+      : { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" });
+    var axis = new Intl.DateTimeFormat("bg-BG", intraday
+      ? { day: "2-digit", month: "2-digit", hour: "2-digit", timeZone: "UTC" }
+      : { day: "numeric", month: "short", timeZone: "UTC" });
+    return { barMs: barMs, full: function (t) { return full.format(new Date(t)); }, axis: axis };
+  }
+  function ticker(product) { return String(product).split("-")[0]; }
+  var GRAN_TEXT = { "1m": "1-минутни", "5m": "5-минутни", "15m": "15-минутни", "1h": "часови", "6h": "6-часови", "1d": "дневни" };
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
   function el(tag, attrs, parent) {
     var n = document.createElementNS(SVGNS, tag);
@@ -319,9 +360,10 @@
     SELL: { cls: "down", icon: "▼", text: "ПРОДАЙ" },
     HOLD: { cls: "hold", icon: "■", text: "ИЗЧАКАЙ" }
   };
-  var granText = { "1m": "1-минутни", "5m": "5-минутни", "15m": "15-минутни", "1h": "часови", "6h": "6-часови", "1d": "дневни" }[M.granularity] || M.granularity;
+  function renderAsset(D, root) {
+  var P = D.prediction, M = D.meta, BT = D.backtest;
+  var DF = dateFormats(M.granularity), barMs = DF.barMs, dAxis = DF.axis, fdate = DF.full;
   var horizonText = M.horizon === 1 ? "1 период напред" : M.horizon + " периода напред";
-  document.title = M.product + " · прогнозен бот";
 
   var expChange = Math.expm1(P.exp_return);
   var sig = SIGNAL[P.signal] || SIGNAL.HOLD;
@@ -334,14 +376,9 @@
   var gaugeLeft = Math.min(P.prob_up, 0.5) * 100, gaugeWidth = Math.abs(P.prob_up - 0.5) * 100;
 
   var html = "";
-  html += '<header class="masthead"><div>' +
-    '<div class="eyebrow">Крипто прогнозен бот</div>' +
-    '<h1>' + esc(M.product.split("-")[0]) + '<span class="quote">/' + esc(M.product.split("-")[1] || "") + '</span></h1>' +
-    '<p class="sub">' + esc(granText) + ' свещи · прогноза ' + esc(horizonText) + ' · ' + M.n_candles + ' свещи история от Coinbase</p>' +
-    '</div><div class="stamp">' +
-    '<span>Последна затворена свещ: <b class="num">' + fdate(Date.parse(P.as_of)) + '</b></span>' +
-    '<span>Прогнозата е за затварянето: <b class="num">' + fdate(Date.parse(P.target_close_time)) + ' UTC</b></span>' +
-    '</div></header>';
+  html += '<div class="asset-head"><h2 class="asset-title">' + esc(ticker(M.product)) + '<span class="quote">/' +
+    esc(M.product.split("-")[1] || "") + '</span></h2>' +
+    '<p class="sub">' + M.n_candles + ' свещи история · прогноза ' + esc(horizonText) + '</p></div>';
 
   html += '<section class="verdict" aria-label="Прогноза">' +
     '<div><span class="eyebrow">Вероятност за ръст</span>' +
@@ -481,7 +518,7 @@
     '<p>' + esc(M.disclaimer) + '</p>' +
     '<p>Генерирано ' + new Intl.DateTimeFormat("bg-BG", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }).format(new Date(M.generated_at)) + ' UTC · данни ' + fdate(Date.parse(M.first_candle)) + ' – ' + fdate(Date.parse(M.last_candle)) + '</p></footer>';
 
-  app.innerHTML = html;
+  root.innerHTML = html;
 
   // ---------- charts ----------
   function tooltip(container) {
@@ -661,13 +698,71 @@
 
   function drawAll() { drawPrice(); drawEquity(); }
   drawAll();
+  return drawAll;
+  }
+
+  // ---------- shell: one card per asset, detail of the selected one ----------
+  var first = ASSETS[0], F = dateFormats(first.meta.granularity);
+  var shell = '<header class="masthead"><div>' +
+    '<div class="eyebrow">Крипто прогнозен бот</div>' +
+    '<h1>Прогноза за ' + F.full(Date.parse(first.prediction.target_close_time) - F.barMs) + '</h1>' +
+    '<p class="sub">' + esc(GRAN_TEXT[first.meta.granularity] || first.meta.granularity) + ' свещи · ' +
+      ASSETS.map(function (a) { return esc(ticker(a.meta.product)); }).join(", ") + ' · данни от Coinbase</p>' +
+    '</div><div class="stamp">' +
+    '<span>Последна затворена свещ: <b class="num">' + F.full(Date.parse(first.prediction.as_of)) + '</b></span>' +
+    '<span>Прогнозата е за затварянето: <b class="num">' + F.full(Date.parse(first.prediction.target_close_time)) + ' UTC</b></span>' +
+    '</div></header>';
+  if (ASSETS.length > 1) {
+    shell += '<div class="assets" role="tablist" aria-label="Активи">' + ASSETS.map(function (a, i) {
+      var p = a.prediction, s = SIGNAL[p.signal] || SIGNAL.HOLD, upA = p.prob_up >= 0.5;
+      return '<button type="button" class="asset-card" role="tab" id="tab-' + i + '" aria-controls="detail" data-i="' + i + '">' +
+        '<span class="ac-top"><span class="ac-ticker">' + esc(ticker(a.meta.product)) + '</span>' +
+          '<span class="ac-signal ' + s.cls + '"><span aria-hidden="true">' + s.icon + '</span> ' + s.text + '</span></span>' +
+        '<span class="ac-price">' + usd(p.last_close) + '</span>' +
+        '<span class="ac-meta"><span>Ръст <b class="' + (upA ? "up-ink" : "down-ink") + '">' + pct(p.prob_up) + '</b></span>' +
+          '<span>очаквано <b class="' + (p.exp_return >= 0 ? "up-ink" : "down-ink") + '">' + pct(Math.expm1(p.exp_return), 2, true) + '</b></span></span>' +
+        '<span class="ac-range">68%: ' + usd(p.range_68[0]) + ' – ' + usd(p.range_68[1]) + '</span>' +
+        '</button>';
+    }).join("") + '</div>';
+  }
+  shell += '<div class="detail" id="detail"' + (ASSETS.length > 1 ? ' role="tabpanel"' : "") + '></div>';
+  app.innerHTML = shell;
+
+  var detail = document.getElementById("detail");
+  var tabs = Array.prototype.slice.call(app.querySelectorAll(".asset-card"));
+  var redraw = function () {};
+  function select(i, focus) {
+    tabs.forEach(function (t, j) {
+      t.setAttribute("aria-selected", j === i ? "true" : "false");
+      t.tabIndex = j === i ? 0 : -1;
+    });
+    if (tabs[i]) {
+      detail.setAttribute("aria-labelledby", tabs[i].id);
+      if (focus) tabs[i].focus();
+    }
+    redraw = renderAsset(ASSETS[i], detail);
+    if (ASSETS.length > 1) {
+      try { history.replaceState(null, "", "#" + ticker(ASSETS[i].meta.product).toLowerCase()); } catch (e) { /* sandboxed */ }
+    }
+  }
+  tabs.forEach(function (t, i) {
+    t.addEventListener("click", function () { select(i); });
+    t.addEventListener("keydown", function (e) {
+      var k = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+      if (k) { e.preventDefault(); select((i + k + tabs.length) % tabs.length, true); }
+    });
+  });
+  var wanted = (location.hash || "").replace("#", "").toLowerCase(), start = 0;
+  ASSETS.forEach(function (a, i) { if (ticker(a.meta.product).toLowerCase() === wanted) start = i; });
+  select(start);
+
   var lastW = app.clientWidth, raf = 0;
   if (window.ResizeObserver) {
     new ResizeObserver(function () {
       if (app.clientWidth === lastW) return;
       lastW = app.clientWidth;
       cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(drawAll);
+      raf = requestAnimationFrame(function () { redraw(); });
     }).observe(app);
   }
 })();

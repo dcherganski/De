@@ -116,6 +116,10 @@ def drop_incomplete(df: pd.DataFrame, granularity: str | int, now: datetime | No
     return df[closes_at <= now]
 
 
+def cache_path(product: str, granularity: str, cache_dir: str | Path = "data") -> Path:
+    return Path(cache_dir) / f"{product}_{granularity}.csv"
+
+
 def update_cache(
     product: str,
     granularity: str = "1d",
@@ -125,7 +129,7 @@ def update_cache(
 ) -> pd.DataFrame:
     """Load cached candles and fetch only what is missing since the last cached bar."""
     client = client or CoinbaseClient()
-    path = Path(cache_dir) / f"{product}_{granularity}.csv"
+    path = cache_path(product, granularity, cache_dir)
     now = datetime.now(timezone.utc)
     cached = load_csv(path) if path.exists() else None
     if cached is not None and not cached.empty:

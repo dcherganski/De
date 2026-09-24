@@ -86,8 +86,18 @@ def to_payload(result: BotResult, history_bars: int = 120) -> dict:
     return _clean(payload)
 
 
-def to_json(result: BotResult, indent: int | None = 2) -> str:
-    return json.dumps(to_payload(result), ensure_ascii=False, indent=indent)
+def _as_list(results: BotResult | list[BotResult]) -> list[BotResult]:
+    return list(results) if isinstance(results, (list, tuple)) else [results]
+
+
+def to_multi_payload(results: BotResult | list[BotResult]) -> dict:
+    return {"assets": [to_payload(r) for r in _as_list(results)]}
+
+
+def to_json(results: BotResult | list[BotResult], indent: int | None = 2) -> str:
+    """One asset -> its payload; several -> {"assets": [...]}."""
+    payload = to_payload(results) if isinstance(results, BotResult) else to_multi_payload(results)
+    return json.dumps(payload, ensure_ascii=False, indent=indent)
 
 
 def _pct(x, digits: int = 1, sign: bool = False) -> str:
@@ -98,6 +108,23 @@ def _pct(x, digits: int = 1, sign: bool = False) -> str:
 
 def _money(x: float) -> str:
     return f"${x:,.2f}"
+
+
+def format_summary(results: list[BotResult]) -> str:
+    """One line per asset, so several forecasts can be compared at a glance."""
+    lines = [
+        f"{'актив':<9} {'цена':>12} {'ръст':>7} {'очаквано':>9} {'коридор 68%':>25}  сигнал",
+    ]
+    for r in results:
+        p = r.prediction
+        edge = "" if p.has_edge is None else (" ✓ предимство" if p.has_edge else " (без предимство)")
+        corridor = f"{_money(p.range_68[0])} – {_money(p.range_68[1])}"
+        lines.append(
+            f"{p.product:<9} {_money(p.last_close):>12} {_pct(p.prob_up):>7} "
+            f"{_pct(math.expm1(p.exp_return), 2, sign=True):>9} {corridor:>25}  "
+            f"{SIGNAL_LABELS.get(p.signal, p.signal)}{edge}"
+        )
+    return "\n".join(lines)
 
 
 def format_text(result: BotResult) -> str:
@@ -181,10 +208,10 @@ def _template() -> str:
     return resources.files("crypto_bot").joinpath("templates/dashboard.html").read_text(encoding="utf-8")
 
 
-def render_html(result: BotResult, standalone: bool = True) -> str:
-    """Fill the dashboard template with the result. `standalone` adds the document
-    skeleton so the file opens correctly straight from disk."""
-    data = json.dumps(to_payload(result), ensure_ascii=False).replace("</", "<\\/")
+def render_html(results: BotResult | list[BotResult], standalone: bool = True) -> str:
+    """Fill the dashboard template with one or more results. `standalone` adds the
+    document skeleton so the file opens correctly straight from disk."""
+    data = json.dumps(to_multi_payload(results), ensure_ascii=False).replace("</", "<\\/")
     body = _template().replace("/*__BOT_DATA__*/null", data)
     if not standalone:
         return body

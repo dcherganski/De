@@ -1,6 +1,7 @@
 import json
 
 import pandas as pd
+import pytest
 
 from crypto_bot import BotConfig, PredictionBot
 from crypto_bot.cli import main
@@ -63,7 +64,7 @@ def test_journal_round_trip(monkeypatch, random_walk, tmp_path):
 
 
 def test_cli_predict_json(tmp_path, random_walk, capsys):
-    path = tmp_path / "btc.csv"
+    path = tmp_path / "BTC-USD_1d.csv"  # product is recognised from the cache-style file name
     save_csv(random_walk, path)
     code = main(["predict", "--csv", str(path), "--no-backtest", "--json", "--min-train", "120",
                  "--html", str(tmp_path / "d.html")])
@@ -71,3 +72,31 @@ def test_cli_predict_json(tmp_path, random_walk, capsys):
     out = json.loads(capsys.readouterr().out)
     assert out["prediction"]["product"] == "BTC-USD"
     assert (tmp_path / "d.html").exists()
+
+
+def test_cli_csv_needs_product_when_name_is_unknown(tmp_path, random_walk):
+    path = tmp_path / "prices.csv"
+    save_csv(random_walk, path)
+    with pytest.raises(SystemExit):
+        main(["predict", "--csv", str(path), "--no-backtest"])
+
+
+def test_cli_predicts_several_products_offline(tmp_path, random_walk, momentum, capsys):
+    save_csv(random_walk, tmp_path / "BTC-USD_1d.csv")
+    save_csv(momentum, tmp_path / "ETH-USD_1d.csv")
+    log = tmp_path / "log.csv"
+    code = main(["predict", "--product", "BTC-USD,ETH-USD", "--offline", "--cache-dir", str(tmp_path),
+                 "--no-backtest", "--json", "--min-train", "120", "--log", str(log),
+                 "--html", str(tmp_path / "multi.html")])
+    assert code == 0
+    out = json.loads(capsys.readouterr().out)
+    assert [a["prediction"]["product"] for a in out["assets"]] == ["BTC-USD", "ETH-USD"]
+    assert sorted(pd.read_csv(log)["product"]) == ["BTC-USD", "ETH-USD"]
+    html = (tmp_path / "multi.html").read_text(encoding="utf-8")
+    assert html.count('"product": "') + html.count('"product":"') >= 2
+
+
+def test_offline_mode_reports_missing_cache(tmp_path):
+    bot = PredictionBot(BotConfig(product="SOL-USD", offline=True, cache_dir=str(tmp_path)))
+    with pytest.raises(FileNotFoundError):
+        bot.load_candles()
