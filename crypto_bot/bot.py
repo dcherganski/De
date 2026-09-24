@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import os
+from concurrent.futures import ProcessPoolExecutor
+from contextlib import nullcontext
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 
@@ -94,7 +97,7 @@ class PredictionBot:
         elif cfg.offline:
             path = cache_path(cfg.product, cfg.granularity, cfg.cache_dir)
             if not path.exists():
-                raise FileNotFoundError(f"няма кеширани данни за {cfg.product} {cfg.granularity}: {path}")
+                raise FileNotFoundError(f"в кеша няма файл {path} (пусни fetch)")
             df = load_csv(path)
         else:
             df = update_cache(cfg.product, cfg.granularity, cfg.cache_dir, cfg.days, client=self.client)
@@ -109,8 +112,7 @@ class PredictionBot:
         candles = candles if candles is not None else self.load_candles(now=now)
         if len(candles) < cfg.min_train + 80:
             raise ValueError(
-                f"need at least {cfg.min_train + 80} closed candles, got {len(candles)}; "
-                "increase --days or lower --min-train"
+                f"недостатъчна история: нужни са поне {cfg.min_train + 80} затворени свещи, има {len(candles)}"
             )
         ds = self.build(candles)
         bt = None
@@ -224,3 +226,51 @@ def _nan_to_none(x):
     x = float(x)
     return None if np.isnan(x) else x
 
+
+
+def _run_one(config: BotConfig, candles: pd.DataFrame) -> BotResult:
+    """Model one product. Worker processes run single-threaded so they don't fight over cores."""
+    try:
+        from threadpoolctl import threadpool_limits
+
+        limits = threadpool_limits(1)
+    except ImportError:  # pragma: no cover - ships with scikit-learn
+        limits = nullcontext()
+    with limits:
+        return PredictionBot(config).run(candles=candles)
+
+
+def default_jobs(n_products: int) -> int:
+    return max(1, min(os.cpu_count() or 1, n_products))
+
+
+def run_many(
+    configs: list[BotConfig], jobs: int = 1, now: datetime | None = None
+) -> tuple[list[BotResult], list[tuple[str, str]]]:
+    """Forecast several products. Candles are loaded one product at a time (gentle on the
+    API); the models then run in `jobs` parallel processes. A product that fails (no data,
+    too little history) is reported in `skipped` instead of stopping the others."""
+    loaded, skipped = [], []
+    for cfg in configs:
+        try:
+            loaded.append((cfg, PredictionBot(cfg).load_candles(now=now)))
+        except Exception as exc:  # network errors, missing cache, unknown product
+            skipped.append((cfg.product, f"няма данни: {exc}"))
+    results: dict[str, BotResult] = {}
+    if jobs > 1 and len(loaded) > 1:
+        with ProcessPoolExecutor(max_workers=min(jobs, len(loaded))) as pool:
+            futures = {cfg.product: pool.submit(_run_one, cfg, candles) for cfg, candles in loaded}
+            for product, future in futures.items():
+                try:
+                    results[product] = future.result()
+                except Exception as exc:
+                    skipped.append((product, str(exc)))
+    else:
+        for cfg, candles in loaded:
+            try:
+                results[cfg.product] = _run_one(cfg, candles)
+            except Exception as exc:
+                skipped.append((cfg.product, str(exc)))
+    ordered = [results[cfg.product] for cfg in configs if cfg.product in results]
+    order = {cfg.product: i for i, cfg in enumerate(configs)}
+    return ordered, sorted(skipped, key=lambda item: order.get(item[0], 0))

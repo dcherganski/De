@@ -11,21 +11,22 @@ from pathlib import Path
 
 import pandas as pd
 
-from .backtest import run_backtest
-from .bot import BotConfig, PredictionBot
-from .data import GRANULARITIES, update_cache
+from .bot import BotConfig, PredictionBot, default_jobs, run_many
+from .data import GRANULARITIES, CoinbaseClient, update_cache
 from .events import event_label, event_study, recent_events
 from .journal import append_prediction, evaluate_journal, summarize_journal
 from .models import MODEL_LABELS
 from .report import format_event_table, format_summary, format_text, render_html, to_json
+from .watchlist import DEFAULT_WATCHLIST, FALLBACK_PRODUCTS, load_watchlist, select_usd_products
 
 
 def _common(p: argparse.ArgumentParser) -> None:
     p.add_argument(
         "--product",
-        help="един или няколко Coinbase продукта, разделени със запетая (по подразбиране BTC-USD,ETH-USD,SOL-USD; "
-        "с --csv се разпознава от името на файла)",
+        help="един или няколко Coinbase продукта, разделени със запетая, или 'all' за всички активни "
+        "USD двойки; по подразбиране списъкът от --watchlist (с --csv се разпознава от името на файла)",
     )
+    p.add_argument("--watchlist", default=DEFAULT_WATCHLIST, help="файл със списъка за следене")
     p.add_argument("--granularity", default="1d", choices=list(GRANULARITIES), help="размер на свещта")
     p.add_argument("--horizon", type=int, default=1, help="колко свещи напред да се прогнозира")
     p.add_argument("--csv", help="чети свещите от CSV вместо от Coinbase API")
@@ -38,9 +39,7 @@ def _common(p: argparse.ArgumentParser) -> None:
     p.add_argument("--threshold", type=float, default=0.02, help="отстъп от 50%% за BUY/SELL сигнал")
     p.add_argument("--fee", type=float, default=0.001, help="такса на сделка (0.001 = 0.1%%)")
     p.add_argument("--allow-short", action="store_true", help="стратегията може да шортва")
-
-
-DEFAULT_PRODUCTS = ("BTC-USD", "ETH-USD", "SOL-USD")
+    p.add_argument("--jobs", type=int, default=0, help="паралелни процеси за моделите (0 = според ядрата)")
 
 
 def _products(args) -> list[str]:
@@ -51,12 +50,29 @@ def _products(args) -> list[str]:
         if not match:
             raise SystemExit("--csv: не мога да разпозная продукта от името на файла; посочи --product, напр. BTC-USD")
         raw = match.group(1)
-    products = [p.strip().upper() for p in (raw or ",".join(DEFAULT_PRODUCTS)).split(",") if p.strip()]
+    if raw is None:
+        if Path(args.watchlist).exists():
+            products = load_watchlist(args.watchlist)
+        else:
+            print(f"Няма файл {args.watchlist}; следя {', '.join(FALLBACK_PRODUCTS)}.", file=sys.stderr)
+            products = list(FALLBACK_PRODUCTS)
+    elif raw.strip().lower() == "all":
+        products = _all_products(args)
+    else:
+        products = [p.strip().upper() for p in raw.split(",") if p.strip()]
     if not products:
         raise SystemExit("--product: посочи поне един продукт, напр. BTC-USD")
     if args.csv and len(products) > 1:
         raise SystemExit("--csv работи с един продукт; за няколко използвай --offline с файлове в --cache-dir")
     return products
+
+
+def _all_products(args) -> list[str]:
+    """Every live crypto/USD pair: from Coinbase, or whatever is cached when offline."""
+    if args.offline:
+        suffix = f"_{args.granularity}.csv"
+        return sorted(p.name[: -len(suffix)] for p in Path(args.cache_dir).glob(f"*{suffix}"))
+    return select_usd_products(CoinbaseClient().products())
 
 
 def _config(args, product: str, backtest: bool = True) -> BotConfig:
@@ -78,6 +94,15 @@ def _config(args, product: str, backtest: bool = True) -> BotConfig:
     )
 
 
+def _jobs(args, n: int) -> int:
+    return args.jobs if args.jobs > 0 else default_jobs(n)
+
+
+def _report_skipped(skipped: list[tuple[str, str]]) -> None:
+    for product, reason in skipped:
+        print(f"Пропуснат {product}: {reason}", file=sys.stderr)
+
+
 def _write(path: str, text: str) -> None:
     out = Path(path)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -86,16 +111,25 @@ def _write(path: str, text: str) -> None:
 
 
 def cmd_fetch(args) -> int:
+    failed = 0
     for product in _products(args):
-        df = update_cache(product, args.granularity, args.cache_dir, args.days)
-        print(f"{product} {args.granularity}: {len(df)} свещи ({df.index[0]} – {df.index[-1]}) → {args.cache_dir}")
-    return 0
+        try:
+            df = update_cache(product, args.granularity, args.cache_dir, args.days)
+            print(f"{product} {args.granularity}: {len(df)} свещи ({df.index[0]} – {df.index[-1]}) → {args.cache_dir}")
+        except Exception as exc:  # keep going with the rest of the list
+            failed += 1
+            print(f"{product}: грешка при изтегляне: {exc}", file=sys.stderr)
+    return 1 if failed else 0
 
 
 def cmd_events(args) -> int:
     for product in _products(args):
         bot = PredictionBot(_config(args, product, backtest=False))
-        ds = bot.build(bot.load_candles())
+        try:
+            ds = bot.build(bot.load_candles())
+        except Exception as exc:
+            print(f"Пропуснат {product}: {exc}", file=sys.stderr)
+            continue
         print(f"═══ {product} ═══")
         print(format_event_table(event_study(ds.frame["close"], ds.events, args.horizon)))
         print()
@@ -107,11 +141,11 @@ def cmd_events(args) -> int:
 
 
 def cmd_backtest(args) -> int:
-    for product in _products(args):
-        bot = PredictionBot(_config(args, product))
-        ds = bot.build(bot.load_candles())
-        res = run_backtest(ds, args.min_train, args.step, args.threshold, args.fee, not args.allow_short)
-        print(f"═══ {product} ═══")
+    products = _products(args)
+    results, skipped = run_many([_config(args, p) for p in products], jobs=_jobs(args, len(products)))
+    for result in results:
+        res = result.backtest
+        print(f"═══ {result.config.product} ═══")
         print(f"Walk-forward бектест: {len(res.predictions)} прогнози "
               f"({res.predictions.index[0]} – {res.predictions.index[-1]}), хоризонт {args.horizon}")
         table = res.metrics.copy()
@@ -122,27 +156,35 @@ def cmd_backtest(args) -> int:
         print("Стратегия:", {k: round(v, 4) if isinstance(v, float) else v for k, v in res.strategy.items()})
         print("Предложени тегла за ансамбъла:", res.weights)
         print()
-    return 0
+    _report_skipped(skipped)
+    return 0 if results else 1
 
 
 def _predict_once(args) -> int:
-    results = [
-        PredictionBot(_config(args, product, backtest=not args.no_backtest)).run() for product in _products(args)
-    ]
+    products = _products(args)
+    configs = [_config(args, p, backtest=not args.no_backtest) for p in products]
+    started = time.monotonic()
+    results, skipped = run_many(configs, jobs=_jobs(args, len(products)))
+    single = len(products) == 1
     if args.json:
-        print(to_json(results if len(results) > 1 else results[0]))
+        print(to_json(results[0] if single and results else results, skipped=None if single else skipped))
+    elif single and results:
+        print(format_text(results[0]))
     else:
-        if len(results) > 1:
-            print(format_summary(results))
+        print(format_summary(results, skipped))
+        if args.details:
             print()
-        print("\n\n".join(format_text(r) for r in results))
-    if args.html:
-        _write(args.html, render_html(results))
+            print("\n\n".join(format_text(r) for r in results))
+    if single:
+        _report_skipped(skipped)
+    print(f"Време: {time.monotonic() - started:.0f} с", file=sys.stderr)
+    if args.html and results:
+        _write(args.html, render_html(results, skipped=skipped))
     if args.log:
         for result in results:
             append_prediction(args.log, result.prediction)
         print(f"Прогнозите са добавени в журнала: {args.log}", file=sys.stderr)
-    return 0
+    return 0 if results else 1
 
 
 def cmd_predict(args) -> int:
@@ -153,9 +195,17 @@ def cmd_evaluate(args) -> int:
     if not Path(args.log).exists():
         print(f"Журналът {args.log} не съществува. Пусни първо: predict --log {args.log}", file=sys.stderr)
         return 1
+    logged = set(pd.read_csv(args.log)["product"])
     for product in _products(args):
+        if product not in logged:
+            continue
         bot = PredictionBot(_config(args, product, backtest=False))
-        evaluated = evaluate_journal(args.log, bot.load_candles(), args.granularity, product)
+        try:
+            candles = bot.load_candles()
+        except Exception as exc:
+            print(f"Пропуснат {product}: {exc}", file=sys.stderr)
+            continue
+        evaluated = evaluate_journal(args.log, candles, args.granularity, product)
         summary = summarize_journal(evaluated)
         print(f"{product}: прогнози в журнала {summary['logged']}, с известен резултат {summary['matured']}")
         if summary["matured"]:
@@ -212,6 +262,7 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--json", action="store_true", help="изход в JSON")
         p.add_argument("--html", help="запиши HTML табло в този файл")
         p.add_argument("--log", help="добави прогнозата в CSV журнал")
+        p.add_argument("--details", action="store_true", help="при няколко актива покажи и пълния отчет за всеки")
         p.add_argument("--no-backtest", action="store_true", help="пропусни бектеста (по-бързо, без проверка за предимство)")
         if name == "watch":
             p.add_argument("--interval", type=int, default=3600, help="секунди между прогнозите")
