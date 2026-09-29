@@ -302,6 +302,8 @@
   .ev-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; font-size: 13.5px; }
   .ev-list li { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
   .ev-list time { color: var(--ink-3); font-family: var(--font-mono); font-size: 12.5px; white-space: nowrap; }
+  .ev-list a { color: inherit; text-decoration: underline; text-decoration-color: var(--ink-3); text-underline-offset: 2px; }
+  .ev-list .num { white-space: nowrap; }
   .sub-h { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
   .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 
@@ -503,6 +505,37 @@
     '<div class="section"><div class="section-head"><h2>Събития и аналози</h2><p>Какво се случва сега и кога пазарът е изглеждал най-сходно.</p></div>' +
       '<div class="panel">' + evHtml + '</div></div>' +
     '</section>';
+
+  // News mood from Jev: informative only
+  if (D.news) {
+    var N = D.news;
+    var windowText = N.window_hours > 0 ? "последните " + N.window_hours + " ч." : "всички заглавия от файла";
+    var moodChip = function (s) {
+      if (s.mood == null) return '<span class="chip">няма новини</span>';
+      var cls = s.mood >= 0.25 ? "good" : s.mood <= -0.25 ? "warn" : "";
+      return '<span class="chip ' + cls + '">' + esc(s.label) + " " + (s.mood >= 0 ? "+" : "−") + nf(2).format(Math.abs(s.mood)) + '</span>';
+    };
+    var headlineList = function (s) {
+      if (!s.headlines.length) return '<p class="muted">Няма заглавия, които да са наистина за актива.</p>';
+      return '<ul class="ev-list">' + s.headlines.map(function (h) {
+        var title = h.link && /^https?:\/\//.test(h.link)
+          ? '<a href="' + esc(h.link) + '" target="_blank" rel="noopener noreferrer">' + esc(h.title) + '</a>'
+          : esc(h.title);
+        return '<li><span>' + title + ' <small class="muted">' + esc(h.source) + ' · ' + fdate(Date.parse(h.published)) + '</small></span>' +
+          '<span class="num ' + (h.sentiment > 0 ? "up-ink" : h.sentiment < 0 ? "down-ink" : "") + '">' +
+          (h.sentiment >= 0 ? "+" : "−") + nf(2).format(Math.abs(h.sentiment)) + '</span></li>';
+      }).join("") + '</ul>';
+    };
+    html += '<section class="section"><div class="section-head"><h2>Настроение в новините</h2>' +
+      '<p>' + esc(N.model) + ' (TypeSafe) оценява заглавията от ' + esc(windowText) + ': дали са наистина за актива и колко са добри или лоши за цената, от −1 до +1. ' +
+      'Само информативно: не влиза в моделите и сигнала, защото няма архив с новини за бектест.</p></div>' +
+      '<div class="panel"><div class="sub-h">' + esc(ticker(M.product)) + '</div>' +
+        '<div class="chips">' + moodChip(N.asset) + '<span class="chip">' + N.asset.n + ' заглавия · ' + N.asset.positive + ' добри · ' + N.asset.negative + ' лоши</span></div>' +
+        headlineList(N.asset) +
+        '<div class="sub-h">Пазарът като цяло</div>' +
+        '<div class="chips">' + moodChip(N.market) + '<span class="chip">' + N.market.n + ' от ' + N.n_headlines + ' заглавия</span></div>' +
+      '</div></section>';
+  }
 
   // Backtest
   if (BT) {
