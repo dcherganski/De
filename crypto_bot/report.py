@@ -71,6 +71,7 @@ def to_payload(result: BotResult, history_bars: int = 120) -> dict:
             "rows": result.event_table.reset_index().to_dict(orient="records"),
         },
         "backtest": None,
+        "news": result.news,
     }
     bt = result.backtest
     if bt is not None:
@@ -134,22 +135,49 @@ def _price(x: float) -> str:
     return f"${x:.{max(2, -int(math.floor(math.log10(x))) + 3)}f}" if x > 0 else "$0"
 
 
+def _mood(mood) -> str:
+    return "—" if mood is None else f"{mood:+.2f}"
+
+
+def _news_window(news: dict) -> str:
+    hours = news["window_hours"]
+    return f"последните {hours:g} ч." if hours > 0 else "без времеви прозорец"
+
+
+def _news_cell(news: dict | None) -> str:
+    if not news:
+        return ""
+    a = news["asset"]
+    return f"{_mood(a['mood']):>6} ({a['n']})"
+
+
 def format_summary(results: list[BotResult], skipped: list[tuple[str, str]] | None = None) -> str:
     """One line per asset, so many forecasts can be compared at a glance."""
+    with_news = any(r.news for r in results)
+    news_head = f"{'новини':>11}  " if with_news else ""
     lines = [
-        f"{'актив':<13} {'цена':>13} {'ръст':>6} {'очаквано':>9} {'коридор 68%':>29}  сигнал",
+        f"{'актив':<13} {'цена':>13} {'ръст':>6} {'очаквано':>9} {'коридор 68%':>29}  {news_head}сигнал",
     ]
     for r in results:
         p = r.prediction
         edge = "" if p.has_edge is None else (" ✓ предимство" if p.has_edge else " (без предимство)")
         corridor = f"{_price(p.range_68[0])} – {_price(p.range_68[1])}"
+        news = f"{_news_cell(r.news):>11}  " if with_news else ""
         lines.append(
             f"{p.product:<13} {_price(p.last_close):>13} {_pct(p.prob_up):>6} "
             f"{_pct(math.expm1(p.exp_return), 2, sign=True):>9} {corridor:>29}  "
-            f"{SIGNAL_LABELS.get(p.signal, p.signal)}{edge}"
+            f"{news}{SIGNAL_LABELS.get(p.signal, p.signal)}{edge}"
         )
     with_edge = sum(1 for r in results if r.prediction.has_edge)
     lines.append(f"Прогнози: {len(results)} · с доказано предимство в бектеста: {with_edge}")
+    if with_news:
+        news = next(r.news for r in results if r.news)
+        m = news["market"]
+        lines.append(
+            f"Новини (Jev, {_news_window(news)}, {news['n_headlines']} заглавия): настроение "
+            f"от −1 до +1 и брой заглавия за актива; пазарът като цяло: {m['label']} {_mood(m['mood'])} "
+            f"({m['n']}). Само информативно: не влиза в моделите и сигнала."
+        )
     if skipped:
         lines.append(f"Пропуснати ({len(skipped)}):")
         lines.extend(f"  {product}: {reason}" for product, reason in skipped)
@@ -196,6 +224,9 @@ def format_text(result: BotResult) -> str:
         add("Най-сходни минали ситуации (k-NN аналози) и какво е последвало:")
         for a in p.analogs:
             add(f"  {a['time'][:10]}  → {_pct(math.expm1(a['fwd_return']), 2, sign=True)}")
+    if result.news:
+        add("")
+        lines.extend(format_news_block(result.news))
     add("")
     v = result.volatility
     add(f"Калибрация на диапазона (walk-forward, {v['n']} прогнози): "
@@ -218,6 +249,66 @@ def format_text(result: BotResult) -> str:
             f"Sharpe {s['sharpe']:.2f}; макс. просадка {_pct(s['max_drawdown'])}; сделки {s['trades']}")
     add("")
     add(DISCLAIMER)
+    return "\n".join(lines)
+
+
+def _headline_lines(summary: dict, limit: int = 5) -> list[str]:
+    return [
+        f"  {'▲' if h['sentiment'] > 0 else '▼' if h['sentiment'] < 0 else '•'} {h['sentiment']:+.2f}  "
+        f"{h['published'][:16].replace('T', ' ')}  {h['source']}: {h['title']}"
+        for h in summary["headlines"][:limit]
+    ]
+
+
+def format_news_block(news: dict) -> list[str]:
+    """Mood of one asset's headlines plus the market's, for the per-asset text report."""
+    a, m = news["asset"], news["market"]
+    lines = [
+        f"Настроение в новините ({news['model']}, {_news_window(news)}): {a['label']} {_mood(a['mood'])} "
+        f"от {a['n']} заглавия ({a['positive']} добри, {a['negative']} лоши)",
+        "  Само информативно: не влиза в моделите и сигнала (няма архив с новини за бектест).",
+    ]
+    lines.extend(_headline_lines(a))
+    lines.append(f"Пазарът като цяло: {m['label']} {_mood(m['mood'])} от {m['n']} заглавия")
+    return lines
+
+
+def format_news_report(report: dict) -> str:
+    """Output of the `news` command: the market first, then every asset with news."""
+    m = report["market"]
+    lines = [
+        f"Настроение в крипто новините · {report['model']} · {_news_window(report)} · "
+        f"{report['n_headlines']} заглавия",
+        f"Скала: −1 ясно лоша новина за цената … 0 неутрална … +1 ясно добра. "
+        f"Брои се заглавие, което Jev смята, че е наистина за актива (вероятност ≥ {report['min_relevance']:.0%}).",
+        "",
+        f"Пазарът като цяло: {m['label']} {_mood(m['mood'])} от {m['n']} заглавия "
+        f"({m['positive']} добри, {m['negative']} лоши)",
+    ]
+    lines.extend(_headline_lines(m, 3))
+    lines.append("")
+    rows = sorted(
+        ((p, s) for p, s in report["assets"].items() if s["n"]),
+        key=lambda item: -abs(item[1]["mood"]),
+    )
+    if rows:
+        lines.append(f"{'актив':<13} {'настроение':>10} {'заглавия':>9}  оценка")
+        for product, s in rows:
+            lines.append(f"{product:<13} {_mood(s['mood']):>10} {s['n']:>9}  {s['label']}")
+        quiet = sum(1 for s in report["assets"].values() if not s["n"])
+        if quiet:
+            lines.append(f"Без новини: {quiet} актива.")
+        for product, s in rows[:5]:
+            lines.append("")
+            lines.append(f"{product}:")
+            lines.extend(_headline_lines(s, 3))
+    else:
+        lines.append("Нито едно заглавие не е за следените активи.")
+    if report["failed"]:
+        lines.append("")
+        lines.append(f"Неоценени заглавия ({len(report['failed'])}): {report['failed'][0]['error']}")
+    lines.append("")
+    lines.append("Само информативно: настроението не влиза в моделите и сигнала на бота.")
     return "\n".join(lines)
 
 
