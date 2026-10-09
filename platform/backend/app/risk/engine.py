@@ -115,7 +115,7 @@ class RiskEngine:
         while qty > ZERO and qty * unit_cost > ctx.cash_free:  # fee rounding can tip it over
             qty -= ctx.rules.qty_step
         if ctx.cash_free > ZERO and qty < ctx.rules.min_qty:
-            reasons.append(f"количеството {qty} е под минимума {ctx.rules.min_qty}")
+            reasons.append(f"количеството {qty:f} е под минимума {ctx.rules.min_qty:f}")
         if ctx.cash_free > ZERO and qty * ask_eff < ctx.rules.min_cost:
             reasons.append(f"стойността е под минималната {ctx.rules.min_cost}")
         res.reasons = reasons
@@ -150,7 +150,7 @@ class RiskEngine:
         if qty <= ZERO:
             reasons.append("няма BTC за продажба")
         elif qty < ctx.rules.min_qty:
-            reasons.append(f"количеството {qty} е под минимума {ctx.rules.min_qty}")
+            reasons.append(f"количеството {qty:f} е под минимума {ctx.rules.min_qty:f}")
         elif qty * bid_eff < ctx.rules.min_cost:
             reasons.append(f"стойността е под минималната {ctx.rules.min_cost}")
         res.reasons = reasons
