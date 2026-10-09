@@ -1,0 +1,21 @@
+[project]
+name = "trading-platform"
+version = "0.1.0"
+description = "Personal crypto trading platform: live data, TypeSafe Jev analysis, risk limits, paper trading by default"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["F", "E9", "B", "I"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+known-third-party = ["alembic"]

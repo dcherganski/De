@@ -1,0 +1,13 @@
+fastapi>=0.143,<1
+uvicorn[standard]>=0.54
+sqlalchemy>=2.1,<2.2
+alembic>=1.20
+psycopg[binary]>=3.3
+pydantic>=2.14
+pydantic-settings>=2.15
+httpx>=0.28
+websockets>=17
+argon2-cffi>=25
+defusedxml>=0.7
+cryptography>=50
+mcp>=2.3
