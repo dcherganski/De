@@ -15,8 +15,11 @@ from sqlalchemy import select
 from ..audit import log as audit
 from ..core.jsonutil import jsonable
 from ..core.models import BotState, ControlCommand, ExchangeCredential, User
-from ..core.secrets import SecretsUnavailable, encrypt_credentials, mask
+from ..core.secrets import SecretsUnavailable, decrypt_credentials, encrypt_credentials, mask
+from ..exchange_adapters.base import BrokerError
+from ..exchange_adapters.bybit import BybitAdapter
 from ..exchange_adapters.registry import SUPPORTED_SYMBOLS, selectable_venues
+from ..market_data.bybit import BybitError
 from .deps import CurrentUser, get_settings_dep, get_sf, now
 from .read import live_block_reasons
 
@@ -140,7 +143,7 @@ def set_mode(body: ModeIn, request: Request, user: CurrentUser):
 
 # ---------------------------------------------------------------- exchange credentials
 class CredentialIn(BaseModel):
-    venue: Literal["kraken", "coinbase"]
+    venue: Literal["bybit", "kraken"]
     label: str = Field(min_length=1, max_length=64, pattern=r"^[\w .-]+$")
     api_key: SecretStr = Field(min_length=8, max_length=512)
     api_secret: SecretStr = Field(min_length=8, max_length=4096)
@@ -197,3 +200,30 @@ def delete_credentials(cred_id: int, request: Request, user: CurrentUser):
                      {"venue": row.venue, "label": row.label, "key_hint": row.key_hint}, ts=t)
         session.delete(row)
     return {"deleted": cred_id}
+
+
+@router.post("/credentials/{cred_id}/check")
+async def check_credentials(cred_id: int, request: Request, user: CurrentUser):
+    """Ask the exchange which permissions the stored key has. Read-only; refuses withdrawal rights."""
+    s, t = get_settings_dep(request), now(request)
+    with get_sf(request)() as session:
+        row = session.get(ExchangeCredential, cred_id)
+        if row is None:
+            raise HTTPException(404, "Няма такъв ключ.")
+        venue, blob, hint = row.venue, row.blob, row.key_hint
+    if venue != "bybit":
+        raise HTTPException(422, f"Проверка на права не е налична за {venue} в тази версия.")
+    try:
+        creds = decrypt_credentials(s, blob)
+    except SecretsUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+    adapter = BybitAdapter(s.symbol, region=s.bybit_region, credentials=creds,
+                           transport=request.app.state.http_transport)
+    try:
+        result = await adapter.check_key()
+    except (BrokerError, BybitError) as exc:
+        result = {"ok": False, "problems": [f"проверката не успя: {exc}"]}
+    with get_sf(request).begin() as session:
+        audit.record(session, user.username, "credential_checked", str(cred_id),
+                     {"venue": venue, "key_hint": hint, "region": s.bybit_region, **result}, ts=t)
+    return jsonable(result | {"region": s.bybit_region})

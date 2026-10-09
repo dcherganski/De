@@ -23,7 +23,7 @@ async def test_buy_fills_at_ask_plus_slippage_with_fee(sf, settings):
     assert st.status == OrderStatus.FILLED
     price = Decimal("60010") * (1 + Decimal("5") * Decimal("0.0001"))
     assert st.avg_price == price
-    fee = Decimal("0.01") * price * Decimal("0.004")
+    fee = Decimal("0.01") * price * settings.paper_fee_rate
     assert st.fee_quote == fee
     bal = await b.get_balances()
     assert bal["BTC"].free == Decimal("0.01")
@@ -39,7 +39,7 @@ async def test_sell_fills_at_bid_minus_slippage(sf, settings):
     assert st.status == OrderStatus.FILLED and st.avg_price == price
     bal = await b.get_balances()
     assert bal["BTC"].total == 0
-    assert bal["EUR"].free == Decimal("0.01") * price * (1 - Decimal("0.004"))
+    assert bal["EUR"].free == Decimal("0.01") * price * (1 - settings.paper_fee_rate)
 
 
 async def test_no_buy_without_funds(sf, settings):

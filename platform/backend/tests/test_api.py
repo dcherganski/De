@@ -121,7 +121,7 @@ async def test_read_views_after_engine_run(sf, settings, clock):
     assert pf["initialized"] and pf["init"]["is_fixture"]
     assert Decimal(pf["init"]["value_eur"]) <= Decimal("200") and Decimal(pf["cash_total"]) == 0
     assert isinstance(pf["equity_eur"], str)  # exact decimals, not floats
-    assert pf["simulation_assumptions"]["fee_rate"] == "0.0040"
+    assert pf["simulation_assumptions"]["fee_rate"] == "0.0025"
     assert set(pf["costs_eur"]) == {"jev", "news", "infra"}
     eq = client.get("/api/equity?hours=24&points=10").json()
     assert eq and len(eq) <= 12
@@ -288,3 +288,29 @@ async def test_demo_seed_is_labelled_and_runs_only_once(sf, settings):
         assert s.scalar(select(func.count(Order.id))) >= 1
     with pytest.raises(SystemExit):
         await seed_demo(sf, settings)
+
+
+def test_bybit_key_check_through_api(sf, settings, clock):
+    import httpx
+
+    from .test_bybit import DOCS_KEY_WITH_WALLET, FAKE_KEY, FAKE_SECRET, FakeBybit
+
+    key = Fernet.generate_key().decode()
+    s2 = settings.model_copy(update={"secrets_master_key": SecretStr(key)})
+    fake = FakeBybit()
+    auth.throttle._fails.clear()
+    with sf.begin() as s:
+        s.add(User(username="ana", password_hash=hash_password(PW), created_at=T0))
+    client = TestClient(create_app(s2, sf, clock=clock, http_transport=httpx.MockTransport(fake)))
+    login(client)
+    cred = client.post("/api/credentials", json={"venue": "bybit", "label": "main", "api_key": FAKE_KEY,
+                                                 "api_secret": FAKE_SECRET, "confirm_no_withdrawal": True}).json()
+    ok = client.post(f"/api/credentials/{cred['id']}/check").json()
+    assert ok["ok"] and ok["can_trade_spot"] and ok["region"] == "eu"
+    fake.key_info = DOCS_KEY_WITH_WALLET
+    bad = client.post(f"/api/credentials/{cred['id']}/check").json()
+    assert not bad["ok"] and bad["problems"]
+    assert fake.calls.count("GET /v5/user/query-api") == 2 and not any("order/create" in c for c in fake.calls)
+    with sf() as s:
+        dump = json.dumps([a.payload for a in s.scalars(select(AuditEntry))])
+        assert FAKE_SECRET not in dump and FAKE_KEY not in dump

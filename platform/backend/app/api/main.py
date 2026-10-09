@@ -17,7 +17,7 @@ from ..core.timeutil import utcnow
 from . import auth, control, read
 
 
-def create_app(settings: Settings | None = None, sf=None, clock=utcnow) -> FastAPI:
+def create_app(settings: Settings | None = None, sf=None, clock=utcnow, http_transport=None) -> FastAPI:
     if settings is None:  # production start; tests pass their own settings and keep pytest's logging
         configure_logging()
     s = settings or get_settings()
@@ -25,6 +25,7 @@ def create_app(settings: Settings | None = None, sf=None, clock=utcnow) -> FastA
     app.state.settings = s
     app.state.sf = sf or session_factory(s.database_url)
     app.state.clock = clock
+    app.state.http_transport = http_transport  # tests inject a mock; production uses the network
 
     @app.exception_handler(RequestValidationError)
     async def _validation(request: Request, exc: RequestValidationError):

@@ -17,26 +17,22 @@ SUPPORTED_SYMBOLS = [
 
 
 def venue_statuses(s: Settings) -> list[AdapterStatus]:
-    statuses = [
+    from .bybit import BybitAdapter
+    from .robinhood import RobinhoodAdapter
+
+    return [
         AdapterStatus(
             name="paper", available=True, market_data=False, trading=True, live_trading_verified=False,
             reason="Симулирани сделки по живи котировки от избрания източник на данни. Не изпраща поръчки никъде.",
-        )
+        ),
+        BybitAdapter.static_status(),
+        AdapterStatus(
+            name="kraken", available=True, market_data=True, trading=False, live_trading_verified=False,
+            reason="Резервен източник на публични цени (WebSocket v2). Търговия през Kraken няма в тази версия.",
+            docs=["https://docs.kraken.com/exchange/api-reference/spot-websocket-v2/ticker"], checked_on="2026-10-09",
+        ),
+        RobinhoodAdapter.static_status(),
     ]
-    try:
-        from .kraken import KrakenAdapter
-        statuses.append(KrakenAdapter.static_status())
-    except ImportError:
-        statuses.append(AdapterStatus("kraken", True, True, False, False,
-                                      "Публични пазарни данни (WebSocket v2). Търговският адаптер не е в тази версия."))
-    try:
-        from .coinbase import CoinbaseAdapter
-        statuses.append(CoinbaseAdapter.static_status())
-    except ImportError:
-        statuses.append(AdapterStatus("coinbase", False, False, False, False, "Адаптерът не е в тази версия."))
-    from .robinhood import RobinhoodAdapter
-    statuses.append(RobinhoodAdapter.static_status())
-    return statuses
 
 
 def selectable_venues(s: Settings) -> list[str]:

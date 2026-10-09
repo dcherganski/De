@@ -35,7 +35,10 @@ class Settings(BaseSettings):
     allow_live_trading: bool = False
 
     # --- market data ---------------------------------------------------------------------
-    quote_venue: Literal["kraken", "coinbase", "fixture"] = "kraken"
+    # Bybit is the main exchange; Kraken is a fallback price source. BYBIT_REGION picks the REST host:
+    # "eu" = api.bybit.eu for EEA accounts (Bybit EU), "global" = api.bybit.com.
+    quote_venue: Literal["bybit", "kraken", "fixture"] = "bybit"
+    bybit_region: Literal["eu", "global"] = "eu"
     symbol: str = "BTC/EUR"
     fixture_path: str | None = None  # replay file when quote_venue == "fixture" (tests, demos)
     max_quote_age_s: int = 15
@@ -68,7 +71,9 @@ class Settings(BaseSettings):
     initial_cash_eur: Decimal = Decimal("0")
 
     # --- paper broker assumptions (shown on the dashboard) --------------------------------
-    paper_fee_rate: Decimal = Decimal("0.0040")  # taker fee as a fraction of notional
+    # Taker fee as a fraction of notional. 0.25% is Bybit EU's non-VIP spot taker rate
+    # (bybit.eu help centre "Bybit EU Spot Fees Explained", checked 2026-10-09).
+    paper_fee_rate: Decimal = Decimal("0.0025")
     paper_slippage_bps: Decimal = Decimal("5")
     paper_min_order_base: Decimal = Decimal("0.00005")
     paper_base_step: Decimal = Decimal("0.00000001")

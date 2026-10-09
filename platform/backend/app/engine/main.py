@@ -10,10 +10,12 @@ import asyncio
 import logging
 import sys
 
+from ..audit import log as audit
 from ..core.config import Settings, get_settings
 from ..core.db import session_factory
 from ..core.models import BotState
 from ..core.secrets import configure_logging
+from ..market_data.bybit import BybitFeed
 from ..market_data.fixture import FixtureFeed
 from ..market_data.kraken import KrakenFeed
 from ..paper_broker.broker import PaperBroker
@@ -23,11 +25,10 @@ log = logging.getLogger("engine")
 
 
 def build_feed(s: Settings):
+    if s.quote_venue == "bybit":
+        return BybitFeed(s.symbol, region=s.bybit_region)
     if s.quote_venue == "kraken":
         return KrakenFeed(s.symbol)
-    if s.quote_venue == "coinbase":
-        from ..market_data.coinbase import CoinbaseFeed
-        return CoinbaseFeed(s.symbol)
     if s.quote_venue == "fixture":
         if not s.fixture_path:
             raise SystemExit("QUOTE_VENUE=fixture needs FIXTURE_PATH")
@@ -56,9 +57,27 @@ def apply_dashboard_selection(s: Settings, sf) -> Settings:
         return s
     with sf() as session:
         bot = session.get(BotState, 1)
-    if bot is None or bot.selected_venue not in ("kraken", "coinbase"):
+    if bot is None or bot.selected_venue not in ("bybit", "kraken"):
         return s
     return s.model_copy(update={"quote_venue": bot.selected_venue, "symbol": bot.selected_symbol})
+
+
+async def apply_exchange_rules(s: Settings, sf, feed) -> Settings:
+    """Simulate with the exchange's own minimum size, step and minimum value when it publishes them."""
+    fetch = getattr(feed, "fetch_rules", None)
+    if fetch is None:
+        return s
+    try:
+        rules = await fetch()
+    except Exception as exc:  # best effort: keep the configured simulation rules
+        log.warning("could not load %s trading rules, keeping configured ones: %s", feed.venue, exc)
+        return s
+    with sf.begin() as session:
+        audit.record(session, "engine", "paper_rules_from_exchange", feed.venue,
+                     {"min_qty": rules.min_qty, "qty_step": rules.qty_step, "min_cost": rules.min_cost,
+                      "source": rules.source})
+    return s.model_copy(update={"paper_min_order_base": rules.min_qty, "paper_base_step": rules.qty_step,
+                                "paper_min_cost_quote": rules.min_cost})
 
 
 def check_live_guards(s: Settings) -> None:
@@ -78,6 +97,7 @@ async def amain() -> None:
     sf = session_factory(s.database_url)
     s = apply_dashboard_selection(s, sf)
     feed = build_feed(s)
+    s = await apply_exchange_rules(s, sf, feed)
     holder: dict = {}
     broker = PaperBroker(sf, s, lambda: holder["engine"].market.quote)
     engine = Engine(s, sf, feed, broker, strategy=build_strategy(s, sf), news=build_news(s, sf))
