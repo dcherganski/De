@@ -112,6 +112,14 @@ class Settings(BaseSettings):
     cookie_secure: bool = False  # set true behind HTTPS
     mcp_token: SecretStr | None = None
 
+    @field_validator("typesafe_api_key", "secrets_master_key", "mcp_token", mode="before")
+    @classmethod
+    def _blank_is_unset(cls, v):
+        # `TYPESAFE_API_KEY=` in .env means "no key", not "an empty key".
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return None
+        return v
+
     @field_validator("rss_feeds", mode="before")
     @classmethod
     def _split_feeds(cls, v):

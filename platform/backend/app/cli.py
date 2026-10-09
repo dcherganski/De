@@ -1,4 +1,4 @@
-"""Admin commands: `python -m app.cli create-user <name>`, `gen-keys` and `seed-demo`.
+"""Admin commands: `python -m app.cli create-user <name>`, `gen-keys`, `seed-demo`, `soak`, `evaluate`.
 
 The password is read with getpass (or from PLATFORM_PASSWORD for scripted setups); it is never
 echoed, logged or passed on the command line.
@@ -69,6 +69,35 @@ def seed_demo() -> int:
     return 0
 
 
+def soak(hours: float, every_s: float, out: str) -> int:
+    from pathlib import Path
+
+    from .evaluation.soak import run
+
+    s = get_settings()
+    print(f"24-часов PAPER тест: {hours:g} ч, проба на всеки {every_s:g} с. Ctrl+C спира и записва частичен отчет.")
+    report = run(session_factory(s.database_url), hours, every_s, Path(out))
+    print(f"Отчет: {report}")
+    return 0
+
+
+def evaluate(tune_fraction: float, out: str | None) -> int:
+    from .evaluation.historical import evaluate as run_eval
+    from .evaluation.historical import load_rows, report_md
+
+    s = get_settings()
+    rows = load_rows(session_factory(s.database_url), s)
+    if len(rows) < 10:
+        print(f"Само {len(rows)} сигнала с резултат — твърде малко за тест. Остави PAPER работата да трупа данни.")
+        return 1
+    text = report_md(run_eval(rows, tune_fraction))
+    if out:
+        with open(out, "w", encoding="utf-8") as f:
+            f.write(text)
+    print(text)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -76,7 +105,18 @@ def main(argv: list[str] | None = None) -> int:
     cu.add_argument("username")
     sub.add_parser("gen-keys", help="генерирай SECRETS_MASTER_KEY и MCP_TOKEN")
     sub.add_parser("seed-demo", help="СИНТЕТИЧНИ демо данни в празна, отделна база")
+    sk = sub.add_parser("soak", help="24-часов PAPER тест с отчет (само чете базата)")
+    sk.add_argument("--hours", type=float, default=24)
+    sk.add_argument("--every", type=float, default=60, help="секунди между пробите")
+    sk.add_argument("--out", default="reports")
+    ev = sub.add_parser("evaluate", help="исторически тест на записаните сигнали без поглед напред")
+    ev.add_argument("--tune-fraction", type=float, default=0.6)
+    ev.add_argument("--out")
     args = parser.parse_args(argv)
+    if args.cmd == "soak":
+        return soak(args.hours, args.every, args.out)
+    if args.cmd == "evaluate":
+        return evaluate(args.tune_fraction, args.out)
     if args.cmd == "create-user":
         return create_user(args.username)
     if args.cmd == "seed-demo":

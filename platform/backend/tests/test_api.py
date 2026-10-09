@@ -314,3 +314,13 @@ def test_bybit_key_check_through_api(sf, settings, clock):
     with sf() as s:
         dump = json.dumps([a.payload for a in s.scalars(select(AuditEntry))])
         assert FAKE_SECRET not in dump and FAKE_KEY not in dump
+
+
+def test_blank_secrets_in_env_mean_unset(monkeypatch):
+    from app.core.config import Settings
+
+    monkeypatch.setenv("TYPESAFE_API_KEY", "")
+    monkeypatch.setenv("SECRETS_MASTER_KEY", "  ")
+    monkeypatch.setenv("MCP_TOKEN", "")
+    s = Settings(_env_file=None)
+    assert s.typesafe_api_key is None and s.secrets_master_key is None and s.mcp_token is None
