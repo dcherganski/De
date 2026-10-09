@@ -14,9 +14,22 @@ from app.api import auth
 from app.api.main import create_app
 from app.api.security import COOKIE, hash_password
 from app.audit.costs import accrue_fixed_costs
-from app.core.models import AuditEntry, BotState, ControlCommand, CostEntry, ExchangeCredential, Order, User
+from app.core.models import (
+    AuditEntry,
+    BotState,
+    ControlCommand,
+    CostEntry,
+    ExchangeCredential,
+    NewsItem,
+    Order,
+    PortfolioInit,
+    QuoteSnapshot,
+    Signal,
+    User,
+)
 from app.core.secrets import decrypt_credentials
-from app.engine.runner import Engine, EngineRestart
+from app.demo import DEMO_REASON, DEMO_VENUE, seed_demo
+from app.engine.runner import Engine, EngineRestart, FixturePortfolioOnLiveFeed
 from app.paper_broker.broker import PaperBroker
 
 from .conftest import T0, synthetic_events
@@ -249,3 +262,29 @@ def test_session_cookie_is_not_the_stored_value(client, sf):
     with sf() as s:
         stored = [u.token_hash for u in s.scalars(select(UserSession))]
     assert token and token not in stored and len(stored[0]) == 64
+
+
+async def test_fixture_portfolio_never_continues_on_live_feed(sf, settings):
+    await run_engine(sf, settings, synthetic_events(minutes=2))
+
+    class LiveLikeFeed(ListFeed):
+        venue = "kraken"
+        is_fixture = False
+
+    engine = Engine(settings, sf, LiveLikeFeed([]), PaperBroker(sf, settings, lambda: None))
+    with pytest.raises(FixturePortfolioOnLiveFeed):
+        await engine.bootstrap()
+
+
+async def test_demo_seed_is_labelled_and_runs_only_once(sf, settings):
+    n = await seed_demo(sf, settings, minutes=40)
+    assert n > 0
+    with sf() as s:
+        assert s.get(PortfolioInit, 1).is_fixture
+        sigs = s.scalars(select(Signal)).all()
+        assert sigs and all(x.reason == DEMO_REASON and x.config_version == "demo" for x in sigs)
+        assert all(q.is_fixture and q.venue == DEMO_VENUE for q in s.scalars(select(QuoteSnapshot)))
+        assert all(n.is_fixture and "example.invalid" in n.url for n in s.scalars(select(NewsItem)))
+        assert s.scalar(select(func.count(Order.id))) >= 1
+    with pytest.raises(SystemExit):
+        await seed_demo(sf, settings)

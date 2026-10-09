@@ -7,7 +7,6 @@ as such (venue "fixture:..." / is_fixture=True). None of it is live data.
 from __future__ import annotations
 
 import os
-import random
 from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -20,7 +19,8 @@ from sqlalchemy import text
 from app.core.config import Settings
 from app.core.db import get_engine, session_factory
 from app.core.timeutil import UTC
-from app.market_data.types import Quote, TradeTick
+from app.demo import synthetic_events as _synthetic_events
+from app.market_data.types import Quote
 
 BACKEND = Path(__file__).resolve().parents[1]
 TEST_DB = os.environ.get(
@@ -95,19 +95,5 @@ def make_quote(bid: str, ask: str, ts: datetime = T0, bid_qty: str | None = "1",
 
 def synthetic_events(minutes: int = 40, start: datetime = T0, seed: int = 7, mid: str = "60000",
                      step_s: int = 5) -> list:
-    """Deterministic SYNTHETIC random walk: a quote and a trade every `step_s` seconds."""
-    rng = random.Random(seed)
-    price = Decimal(mid)
-    events: list = []
-    t = start
-    end = start + timedelta(minutes=minutes)
-    while t < end:
-        price *= Decimal(1) + Decimal(str(round(rng.gauss(0, 0.0006), 6)))
-        price = price.quantize(Decimal("0.1"))
-        half_spread = Decimal("0.5")
-        events.append(Quote("fixture:synthetic", "BTC/EUR", price - half_spread, price + half_spread, t,
-                            bid_qty=Decimal("0.8"), ask_qty=Decimal("0.8"), ts_exchange=t, is_fixture=True))
-        events.append(TradeTick("fixture:synthetic", "BTC/EUR", price, Decimal("0.01"), rng.choice(["buy", "sell"]),
-                                t, t, trade_id=str(len(events)), is_fixture=True))
-        t += timedelta(seconds=step_s)
-    return events
+    """Deterministic SYNTHETIC random walk (see app.demo), starting at the synthetic clock T0."""
+    return _synthetic_events(minutes=minutes, start=start, seed=seed, mid=mid, step_s=step_s)

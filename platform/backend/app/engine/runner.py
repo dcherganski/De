@@ -57,6 +57,10 @@ class SimClock:
         return self.now
 
 
+class FixturePortfolioOnLiveFeed(SystemExit):
+    """The database holds a portfolio built from test data; a live feed must not continue it."""
+
+
 class EngineRestart(Exception):
     """The dashboard picked another exchange; the process exits and Docker starts it on the new feed."""
 
@@ -114,6 +118,12 @@ class Engine:
             })
 
     async def bootstrap(self) -> None:
+        with self.sf() as session:
+            init = self.portfolio.get_init(session)
+        if init is not None and init.is_fixture and not self.feed.is_fixture:
+            raise FixturePortfolioOnLiveFeed(
+                "The database holds a portfolio built from TEST/FIXTURE data. Use a separate, empty database "
+                "for live-data paper trading.")
         self.ensure_rows()
         self.rules = await self.broker.get_market_rules(self.s.symbol)
         n = await self.execution.reconcile()

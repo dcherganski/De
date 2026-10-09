@@ -1,4 +1,4 @@
-"""Admin commands: `python -m app.cli create-user <name>` and `python -m app.cli gen-keys`.
+"""Admin commands: `python -m app.cli create-user <name>`, `gen-keys` and `seed-demo`.
 
 The password is read with getpass (or from PLATFORM_PASSWORD for scripted setups); it is never
 echoed, logged or passed on the command line.
@@ -57,15 +57,30 @@ def gen_keys() -> int:
     return 0
 
 
+def seed_demo() -> int:
+    import asyncio
+
+    from .demo import seed_demo as run
+
+    s = get_settings()
+    print("Зареждам СИНТЕТИЧНИ демо данни (етикет fixture). Не са живи пазарни данни.")
+    n = asyncio.run(run(session_factory(s.database_url), s))
+    print(f"Готово: {n} синтетични събития.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     sub = parser.add_subparsers(dest="cmd", required=True)
     cu = sub.add_parser("create-user", help="създай потребител или смени паролата му")
     cu.add_argument("username")
     sub.add_parser("gen-keys", help="генерирай SECRETS_MASTER_KEY и MCP_TOKEN")
+    sub.add_parser("seed-demo", help="СИНТЕТИЧНИ демо данни в празна, отделна база")
     args = parser.parse_args(argv)
     if args.cmd == "create-user":
         return create_user(args.username)
+    if args.cmd == "seed-demo":
+        return seed_demo()
     return gen_keys()
 
 
