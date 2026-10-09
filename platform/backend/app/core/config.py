@@ -102,7 +102,6 @@ class Settings(BaseSettings):
     news_cost_eur_per_month: Decimal = Decimal("0")
 
     # --- security ------------------------------------------------------------------------
-    session_secret: SecretStr = SecretStr("")
     secrets_master_key: SecretStr | None = None  # Fernet key for credentials at rest
     session_ttl_h: int = 12
     cookie_secure: bool = False  # set true behind HTTPS

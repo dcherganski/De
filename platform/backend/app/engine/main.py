@@ -12,11 +12,12 @@ import sys
 
 from ..core.config import Settings, get_settings
 from ..core.db import session_factory
+from ..core.models import BotState
 from ..core.secrets import configure_logging
 from ..market_data.fixture import FixtureFeed
 from ..market_data.kraken import KrakenFeed
 from ..paper_broker.broker import PaperBroker
-from .runner import Engine
+from .runner import Engine, EngineRestart
 
 log = logging.getLogger("engine")
 
@@ -49,6 +50,17 @@ def build_news(s: Settings, sf):
     return NewsService.from_settings(s, sf)
 
 
+def apply_dashboard_selection(s: Settings, sf) -> Settings:
+    """The exchange picked in the dashboard wins over QUOTE_VENUE, except for fixture replays."""
+    if s.quote_venue == "fixture":
+        return s
+    with sf() as session:
+        bot = session.get(BotState, 1)
+    if bot is None or bot.selected_venue not in ("kraken", "coinbase"):
+        return s
+    return s.model_copy(update={"quote_venue": bot.selected_venue, "symbol": bot.selected_symbol})
+
+
 def check_live_guards(s: Settings) -> None:
     if s.mode != "live":
         return
@@ -64,6 +76,7 @@ async def amain() -> None:
     s = get_settings()
     check_live_guards(s)
     sf = session_factory(s.database_url)
+    s = apply_dashboard_selection(s, sf)
     feed = build_feed(s)
     holder: dict = {}
     broker = PaperBroker(sf, s, lambda: holder["engine"].market.quote)
@@ -78,6 +91,9 @@ def main() -> None:
         asyncio.run(amain())
     except KeyboardInterrupt:
         sys.exit(0)
+    except EngineRestart as exc:
+        log.info("restarting: %s", exc)
+        sys.exit(3)  # compose restarts the service (restart: unless-stopped)
 
 
 if __name__ == "__main__":

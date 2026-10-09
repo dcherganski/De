@@ -19,6 +19,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session, sessionmaker
 
 from ..audit import log as audit
+from ..audit.costs import accrue_fixed_costs
 from ..core.config import Settings
 from ..core.models import (
     BotState,
@@ -56,6 +57,10 @@ class SimClock:
         return self.now
 
 
+class EngineRestart(Exception):
+    """The dashboard picked another exchange; the process exits and Docker starts it on the new feed."""
+
+
 @dataclass
 class Trigger:
     kind: str  # candle_close | news
@@ -85,6 +90,7 @@ class Engine:
         self._last_quote_store: datetime | None = None
         self._last_exit_check = 0.0
         self._last_snapshot: datetime | None = None
+        self._last_minute_job = 0.0
         self.last_error: str | None = None
         self.rules = None
 
@@ -93,7 +99,7 @@ class Engine:
         now = self.clock()
         with self.sf.begin() as session:
             if session.get(BotState, 1) is None:
-                session.add(BotState(id=1, entries_paused=False, selected_venue=self.broker.name,
+                session.add(BotState(id=1, entries_paused=False, selected_venue=self.feed.venue,
                                      selected_symbol=self.s.symbol, updated_at=now, updated_by="engine"))
             status = session.get(EngineStatus, 1)
             if status is None:
@@ -360,6 +366,19 @@ class Engine:
                 st.news_ok = self.news.ok
                 st.last_news_poll_at = self.news.last_poll_at
 
+    def check_selection(self) -> None:
+        """Restart onto the exchange chosen in the dashboard. Fixture replays never switch."""
+        if self.feed.is_fixture:
+            return
+        with self.sf() as session:
+            bot = session.get(BotState, 1)
+            wanted = (bot.selected_venue, bot.selected_symbol) if bot else (self.feed.venue, self.s.symbol)
+        if wanted != (self.feed.venue, self.s.symbol):
+            with self.sf.begin() as session:
+                audit.record(session, "engine", "engine_restart_for_venue", None,
+                             {"from": [self.feed.venue, self.s.symbol], "to": list(wanted), "funds_moved": False})
+            raise EngineRestart(f"switching feed to {wanted[0]} {wanted[1]}")
+
     # ------------------------------------------------------------------ loops
     async def _feed_loop(self) -> None:
         async for event in self.feed.stream():
@@ -396,6 +415,12 @@ class Engine:
                 self.heartbeat()
                 if self.strategy is not None:
                     await self.strategy.periodic(self)
+                if time.monotonic() - self._last_minute_job >= 60:
+                    self._last_minute_job = time.monotonic()
+                    accrue_fixed_costs(self.sf, self.s, self.clock())
+                self.check_selection()
+            except EngineRestart:
+                raise
             except Exception as exc:
                 self.last_error = f"timer: {type(exc).__name__}: {exc}"
                 log.exception("timer loop failed")
