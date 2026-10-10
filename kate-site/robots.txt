@@ -1,2 +1,4 @@
 User-agent: *
 Allow: /
+
+Sitemap: https://kate-ai.pages.dev/sitemap.xml

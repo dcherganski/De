@@ -1,6 +1,7 @@
 # KATE — сайт на проекта
 
 Статичен, mobile-first сайт на английски за представяне на KATE пред инвеститори.
+Публикуван на **https://kate-ai.pages.dev** (Cloudflare Pages, качен ръчно).
 Без framework, без build стъпка, без бисквитки и без външни заявки (шрифтове, аналитика).
 
 ## Файлове
@@ -55,10 +56,12 @@ npx wrangler pages deploy kate-site --project-name kate-ai
 Workflow-ът се стартира **само ръчно**, за да не стане нищо публично случайно.
 Ако хранилището е частно, GitHub Pages изисква платен план — тогава ползвай Cloudflare.
 
-## След като има домейн
+## Обновяване на публикувания сайт
 
-- Смени `og:image` в `index.html` на пълен адрес (`https://домейн/og-image.png`).
-- Добави `<link rel="canonical" href="https://домейн/">` и `sitemap.xml`.
+Cloudflare → Workers & Pages → `kate-ai` → **Create deployment** → качи новото съдържание на `kate-site`.
+
+Адресът `https://kate-ai.pages.dev` е записан в canonical, `og:url`, `og:image`, JSON-LD, `sitemap.xml` и `robots.txt`.
+При собствен домейн смени го на тези места (`grep -rn kate-ai.pages.dev kate-site`).
 
 ## Какво остава
 
