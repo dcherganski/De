@@ -15,7 +15,7 @@ from app.jev_client.client import JevClient
 from app.jev_client.schemas import ChoiceAnswer, NoulAnswer
 from app.news.parsing import RawNews
 from app.news.service import NewsService
-from app.strategy.outcomes import calibration, record_outcomes
+from app.strategy.outcomes import calibration, record_outcomes, reliability_bins, wilson
 from app.strategy.runner import StrategyRunner, decide
 
 from .conftest import T0, synthetic_events
@@ -141,6 +141,21 @@ async def test_outcomes_and_calibration(sf, settings):
     cal = calibration(sf)
     assert cal["n"] == len(done) and "шум" in cal["note"]
     assert 0 <= cal["close_above"]["brier"] <= 1
+    assert sum(b["n"] for b in cal["close_above"]["bins"]) == cal["close_above"]["n"]
+
+
+def test_reliability_bins():
+    pairs = [(0.05, 0.0), (0.12, 1.0), (0.18, 0.0), (0.65, 1.0), (0.69, 1.0), (0.61, 0.0), (1.0, 1.0), (0.0, 0.0)]
+    bins = reliability_bins(pairs)
+    assert [(b["lo"], b["n"]) for b in bins] == [(0.0, 2), (0.1, 2), (0.6, 3), (0.9, 1)]  # 1.0 lands in the last bin
+    assert sum(b["n"] for b in bins) == len(pairs)
+    six = bins[2]
+    assert six["hits"] == 2 and abs(six["observed_rate"] - 2 / 3) < 1e-9 and abs(six["mean_forecast"] - 0.65) < 1e-9
+    for b in bins:
+        assert 0 <= b["ci_lo"] <= b["observed_rate"] <= b["ci_hi"] <= 1
+    lo, hi = wilson(0, 1)
+    assert lo == 0 and 0.7 < hi < 0.85  # one observation says almost nothing
+    assert wilson(50, 100)[1] - wilson(50, 100)[0] < 0.2
 
 
 async def test_news_trigger_rate_limited_and_once_per_item(sf, settings):

@@ -9,6 +9,7 @@ Signals without data around t0+H are closed as "no data" after two hours and exc
 
 from __future__ import annotations
 
+import math
 from datetime import timedelta
 from decimal import Decimal
 
@@ -69,6 +70,32 @@ def record_outcomes(sf, now) -> int:
     return done
 
 
+def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
+    """95% Wilson score interval for k successes in n trials; stays inside [0, 1] even for tiny n."""
+    if n == 0:
+        return 0.0, 1.0
+    p = k / n
+    centre = (p + z * z / (2 * n)) / (1 + z * z / n)
+    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / (1 + z * z / n)
+    return max(0.0, centre - half), min(1.0, centre + half)
+
+
+def reliability_bins(pairs: list[tuple[float, float]], bins: int = 10) -> list[dict]:
+    """Forecasts grouped into equal-width probability bins (only non-empty ones), for a reliability diagram."""
+    groups: dict[int, list[tuple[float, float]]] = {}
+    for p, o in pairs:
+        groups.setdefault(min(bins - 1, max(0, int(p * bins))), []).append((p, o))
+    out = []
+    for i in sorted(groups):
+        g = groups[i]
+        k = int(sum(o for _, o in g))
+        lo, hi = wilson(k, len(g))
+        out.append({"lo": i / bins, "hi": (i + 1) / bins, "n": len(g), "hits": k,
+                    "mean_forecast": sum(p for p, _ in g) / len(g), "observed_rate": k / len(g),
+                    "ci_lo": lo, "ci_hi": hi})
+    return out
+
+
 def calibration(sf) -> dict:
     """Brier scores and frequencies. With few signals these numbers are noise, and say so."""
     with sf() as session:
@@ -87,7 +114,7 @@ def calibration(sf) -> dict:
         base = sum(o for _, o in pairs) / len(pairs)
         ref = sum((base - o) ** 2 for _, o in pairs) / len(pairs)
         out[name] = {"n": len(pairs), "mean_forecast": sum(p for p, _ in pairs) / len(pairs), "observed_rate": base,
-                     "brier": brier, "brier_of_base_rate": ref}
+                     "brier": brier, "brier_of_base_rate": ref, "bins": reliability_bins(pairs)}
     out["note"] = ("Под ~100 сигнала тези числа са шум и не показват умение."
                    if len(rows) < 100 else "Оценка извън извадката; миналото не гарантира бъдещето.")
     return out

@@ -180,12 +180,24 @@ export interface Latency {
   note: string;
 }
 
+export interface CalibrationBin {
+  lo: number;
+  hi: number;
+  n: number;
+  hits: number;
+  mean_forecast: number;
+  observed_rate: number;
+  ci_lo: number;
+  ci_hi: number;
+}
+
 export interface CalibrationEntry {
   n: number;
   mean_forecast: number;
   observed_rate: number;
   brier: number;
   brier_of_base_rate: number;
+  bins: CalibrationBin[];
 }
 
 export interface Calibration {

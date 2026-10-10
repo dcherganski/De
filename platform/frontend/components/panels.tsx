@@ -1,3 +1,7 @@
+"use client";
+
+import { useState } from "react";
+import { ReliabilityChart } from "@/components/ReliabilityChart";
 import type { Calibration, CalibrationEntry, Costs, Latency, Portfolio, SettingsView, SignalView, Status } from "@/lib/types";
 import {
   ACTION_LABEL, fmtAge, fmtBtc, fmtEur, fmtPct, fmtPrice, fmtProb, fmtSignedEur, fmtTime, INTENT_LABEL, toNum,
@@ -193,18 +197,32 @@ function CalRow({ name, e }: { name: string; e: CalibrationEntry | null }) {
   );
 }
 
+const CAL_EVENTS = [
+  { key: "close_above", name: "над целта след 30 мин" },
+  { key: "touch", name: "докосва целта" },
+  { key: "close_below", name: "под стопа след 30 мин" },
+] as const;
+
 export function CalibrationPanel({ c }: { c: Calibration }) {
+  const [event, setEvent] = useState<(typeof CAL_EVENTS)[number]["key"]>("close_above");
+  const current = CAL_EVENTS.find((e) => e.key === event)!;
   return (
-    <section className="card span-4" aria-labelledby="cal-h">
+    <section className="card span-6" aria-labelledby="cal-h">
       <h2 id="cal-h">Калибрация на прогнозите</h2>
-      <table>
-        <thead><tr><th>събитие</th><th className="num">n</th><th className="num">прогноза</th><th className="num">стана</th><th className="num">Brier / база</th></tr></thead>
-        <tbody>
-          <CalRow name="над целта след 30 мин" e={c.close_above} />
-          <CalRow name="докосва целта" e={c.touch} />
-          <CalRow name="под стопа след 30 мин" e={c.close_below} />
-        </tbody>
-      </table>
+      <div className="segmented" role="group" aria-label="Събитие">
+        {CAL_EVENTS.map((e) => (
+          <button key={e.key} type="button" aria-pressed={event === e.key} onClick={() => setEvent(e.key)}>{e.name}</button>
+        ))}
+      </div>
+      <ReliabilityChart key={event} entry={c[event]} label={current.name} />
+      <div className="table-wrap">
+        <table>
+          <thead><tr><th>събитие</th><th className="num">n</th><th className="num">прогноза</th><th className="num">стана</th><th className="num">Brier / база</th></tr></thead>
+          <tbody>
+            {CAL_EVENTS.map((e) => <CalRow key={e.key} name={e.name} e={c[e.key]} />)}
+          </tbody>
+        </table>
+      </div>
       <p className="notice">{c.note}</p>
       <p><small>{c.explanation}</small></p>
     </section>

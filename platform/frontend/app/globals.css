@@ -165,5 +165,29 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
 .key-2 { background: var(--series-2); }
 .x-labels { justify-content: space-between; margin-left: 72px; }
 
+/* Reliability diagram (calibration) */
+.plot-rel { height: 220px; }
+.chart .diag { stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 4 4; }
+.chart .whisker { stroke: var(--series-1); stroke-width: 2; stroke-linecap: round; }
+/* pinned to the half of the plot away from the point, so it never leaves the card on narrow screens */
+.tooltip.pinned { top: 4px; transform: none; white-space: normal; max-width: calc(100% - 8px); }
+.tooltip.pinned.at-left { left: 4px; }
+.tooltip.pinned.at-right { right: 4px; }
+.dot.hollow { background: var(--surface); border: 2px solid var(--series-1); }
+.dot.on { width: 12px; height: 12px; }
+.key-diag { background: repeating-linear-gradient(90deg, var(--muted) 0 4px, transparent 4px 7px); }
+.count-strip { position: relative; height: 44px; margin-top: 6px; border-bottom: 1px solid var(--grid); }
+.count-strip .bar { position: absolute; bottom: 0; min-height: 2px; background: var(--series-1); border-radius: 4px 4px 0 0; }
+.count-strip .bar.on { outline: 2px solid var(--text); outline-offset: 1px; }
+.x-ticks { position: relative; display: block; height: 18px; margin-top: 4px; }
+.x-ticks small { position: absolute; transform: translateX(-50%); color: var(--muted); font-size: 0.75rem; font-variant-numeric: tabular-nums; }
+.x-ticks small:first-child { transform: none; }
+.x-ticks small:last-child { transform: translateX(-100%); }
+.axis-title { margin: 2px 0 8px 72px; color: var(--muted); }
+.segmented { display: inline-flex; flex-wrap: wrap; gap: 0; margin-top: 8px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.segmented button { border: 0; border-radius: 0; font-weight: 500; }
+.segmented button + button { border-left: 1px solid var(--border); }
+.segmented button[aria-pressed="true"] { background: var(--paper-bg); color: var(--paper-text); font-weight: 600; }
+
 .login { max-width: 360px; margin: 10vh auto; }
 .login form > * + * { margin-top: 12px; }

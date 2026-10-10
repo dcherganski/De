@@ -20,6 +20,10 @@ test("dashboard shows PAPER, labelled test data, and pausing never sells", async
   await expect(page.getByRole("heading", { name: "Портфейл (стойност в EUR)" })).toBeVisible();
   await expect(page.getByRole("img", { name: /Стойност на портфейла спрямо задържане/ })).toBeVisible();
   await expect(page.getByText("LIVE е")).toBeVisible();
+  const cal = page.locator("section", { has: page.getByRole("heading", { name: "Калибрация на прогнозите" }) });
+  await expect(cal.getByRole("img", { name: /Калибрация за/ }).or(cal.getByText(/Още няма достатъчно прогнози/))).toBeVisible();
+  await cal.getByRole("button", { name: "докосва целта" }).click();
+  await expect(cal.getByRole("button", { name: "докосва целта" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator("option", { hasText: "robinhood (недостъпна)" })).toHaveAttribute("disabled", "");
   await page.screenshot({ path: "test-results/dashboard.png", fullPage: true });
 
