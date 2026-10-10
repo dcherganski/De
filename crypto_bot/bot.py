@@ -79,6 +79,7 @@ class BotResult:
     event_table: pd.DataFrame
     backtest: BacktestResult | None
     volatility: dict
+    news: dict | None = None  # headline mood from Jev: shown, never used by the models or signal
 
 
 def _iso(ts) -> str:

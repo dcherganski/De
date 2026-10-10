@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 import time
@@ -16,7 +17,8 @@ from .data import GRANULARITIES, CoinbaseClient, update_cache
 from .events import event_label, event_study, recent_events
 from .journal import append_prediction, evaluate_journal, summarize_journal
 from .models import MODEL_LABELS
-from .report import format_event_table, format_summary, format_text, render_html, to_json
+from .news import API_KEY_ENV, JevAuthError, JevClient, asset_news, fetch_news, load_news_csv, recent_news, score_news
+from .report import format_event_table, format_news_report, format_summary, format_text, render_html, to_json
 from .watchlist import DEFAULT_WATCHLIST, FALLBACK_PRODUCTS, load_watchlist, select_usd_products
 
 
@@ -40,6 +42,26 @@ def _common(p: argparse.ArgumentParser) -> None:
     p.add_argument("--fee", type=float, default=0.001, help="такса на сделка (0.001 = 0.1%%)")
     p.add_argument("--allow-short", action="store_true", help="стратегията може да шортва")
     p.add_argument("--jobs", type=int, default=0, help="паралелни процеси за моделите (0 = според ядрата)")
+
+
+def _news_options(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--news-file", help="CSV със заглавия (колони date,title и по желание summary,source,link) "
+                   "вместо RSS емисиите на CoinDesk, Cointelegraph, Decrypt и The Block")
+    p.add_argument("--news-hours", type=float, default=24, help="заглавия от последните N часа (0 = всички)")
+    p.add_argument("--news-limit", type=int, default=40, help="най-много толкова заглавия, най-новите")
+
+
+def _news_report(args, products: list[str]) -> dict:
+    """Mood per product from Jev. Raises JevAuthError when the API key is missing or refused."""
+    client = JevClient.from_env()
+    if args.news_file:
+        items = load_news_csv(args.news_file)
+    else:
+        items, errors = fetch_news()
+        for source, err in errors:
+            print(f"Новини: {source} не отговаря: {err}", file=sys.stderr)
+    items = recent_news(items, hours=args.news_hours, limit=args.news_limit)
+    return score_news(items, products, client, window_hours=args.news_hours)
 
 
 def _products(args) -> list[str]:
@@ -165,6 +187,13 @@ def _predict_once(args) -> int:
     configs = [_config(args, p, backtest=not args.no_backtest) for p in products]
     started = time.monotonic()
     results, skipped = run_many(configs, jobs=_jobs(args, len(products)))
+    if args.news and results:
+        try:
+            report = _news_report(args, [r.config.product for r in results])
+            for result in results:
+                result.news = asset_news(report, result.config.product)
+        except Exception as exc:  # no key, no network: the forecast is still useful without the news
+            print(f"Новините са пропуснати: {exc}", file=sys.stderr)
     single = len(products) == 1
     if args.json:
         print(to_json(results[0] if single and results else results, skipped=None if single else skipped))
@@ -189,6 +218,20 @@ def _predict_once(args) -> int:
 
 def cmd_predict(args) -> int:
     return _predict_once(args)
+
+
+def cmd_news(args) -> int:
+    products = _products(args)
+    try:
+        report = _news_report(args, products)
+    except JevAuthError as exc:
+        print(f"{exc}. Ключ се взима от typesafe.ai.", file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+    else:
+        print(format_news_report(report))
+    return 0 if report["n_headlines"] else 1
 
 
 def cmd_evaluate(args) -> int:
@@ -264,10 +307,21 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--log", help="добави прогнозата в CSV журнал")
         p.add_argument("--details", action="store_true", help="при няколко актива покажи и пълния отчет за всеки")
         p.add_argument("--no-backtest", action="store_true", help="пропусни бектеста (по-бързо, без проверка за предимство)")
+        p.add_argument("--news", action="store_true",
+                       help=f"добави настроението в новините от Jev (нужен е ключ в {API_KEY_ENV}); само информативно")
+        _news_options(p)
         if name == "watch":
             p.add_argument("--interval", type=int, default=3600, help="секунди между прогнозите")
             p.add_argument("--iterations", type=int, default=0, help="брой цикли (0 = безкрайно)")
         p.set_defaults(func=func)
+
+    p = sub.add_parser("news", help="настроение в крипто новините по активи (Jev на TypeSafe)")
+    p.add_argument("--product", help="един или няколко продукта, разделени със запетая, или 'all'; "
+                   "по подразбиране списъкът от --watchlist")
+    p.add_argument("--watchlist", default=DEFAULT_WATCHLIST, help="файл със списъка за следене")
+    _news_options(p)
+    p.add_argument("--json", action="store_true", help="изход в JSON")
+    p.set_defaults(func=cmd_news, csv=None, offline=False, granularity="1d", cache_dir="data")
 
     p = sub.add_parser("evaluate", help="оцени минали прогнози от журнала спрямо реалността")
     _common(p)
