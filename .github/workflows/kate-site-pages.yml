@@ -1,0 +1,30 @@
+# Publishes kate-site/ to GitHub Pages. Runs only when started by hand
+# (Actions → "KATE site: deploy to GitHub Pages" → Run workflow), so nothing goes public by accident.
+name: "KATE site: deploy to GitHub Pages"
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: kate-site-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: kate-site
+      - id: deployment
+        uses: actions/deploy-pages@v4
