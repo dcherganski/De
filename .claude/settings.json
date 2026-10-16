@@ -1,7 +1,5 @@
 {
-  "enabledMcpjsonServers": [
-    "watch-skill"
-  ],
+  "enabledMcpjsonServers": ["watch-skill"],
   "extraKnownMarketplaces": {
     "typesafe-ai": {
       "source": {
@@ -12,11 +10,5 @@
   },
   "enabledPlugins": {
     "typesafe@typesafe-ai": true
-  },
-  "permissions": {
-    "deny": [
-      "Bash(bw export:*)",
-      "Bash(bw get password:*)"
-    ]
   }
 }
