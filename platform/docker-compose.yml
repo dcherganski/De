@@ -1,0 +1,73 @@
+# Personal trading platform. PAPER by default; nothing here enables real trading.
+# Only the dashboard (and the optional MCP server) are published, and only on 127.0.0.1.
+name: trading-platform
+
+x-backend: &backend
+  build: ./backend
+  env_file: .env
+  environment:
+    DATABASE_URL: postgresql+psycopg://trader:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/trading
+  depends_on:
+    migrate:
+      condition: service_completed_successfully
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: trader
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: trading
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trader -d trading"]
+      interval: 5s
+      retries: 20
+    restart: unless-stopped
+
+  migrate:
+    build: ./backend
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://trader:${POSTGRES_PASSWORD}@db:5432/trading
+    command: ["python", "-m", "alembic", "upgrade", "head"]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    <<: *backend
+    command: ["uvicorn", "--factory", "app.api.main:create_app", "--host", "0.0.0.0", "--port", "8000"]
+    volumes:
+      - reports:/app/reports
+    restart: unless-stopped
+
+  engine:
+    <<: *backend
+    command: ["python", "-m", "app.engine.main"]
+    # Picking another exchange in the dashboard exits the engine with code 3; this brings it back on the new feed.
+    restart: unless-stopped
+
+  web:
+    build: ./frontend
+    environment:
+      API_URL: http://api:8000
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  mcp:
+    <<: *backend
+    profiles: ["mcp"]
+    command: ["uvicorn", "--factory", "app.mcp.server:create_app", "--host", "0.0.0.0", "--port", "8100"]
+    ports:
+      - "127.0.0.1:8100:8100"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  reports:

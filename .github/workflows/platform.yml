@@ -1,0 +1,97 @@
+name: platform
+
+on:
+  push:
+    paths: ["platform/**", ".github/workflows/platform.yml"]
+  pull_request:
+    paths: ["platform/**", ".github/workflows/platform.yml"]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: trader
+          POSTGRES_PASSWORD: trader_local_only
+          POSTGRES_DB: trading_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U trader" --health-interval 5s --health-timeout 5s --health-retries 20
+    defaults:
+      run:
+        working-directory: platform/backend
+    env:
+      TEST_DATABASE_URL: postgresql+psycopg://trader:trader_local_only@127.0.0.1:5432/trading_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements-dev.txt
+      - run: ruff check .
+      - run: python -m pytest -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: platform/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: platform/frontend/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+
+  e2e:
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: trader
+          POSTGRES_PASSWORD: trader_local_only
+          POSTGRES_DB: trading_e2e
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U trader" --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: platform/frontend/package-lock.json
+      - run: pip install -r platform/backend/requirements.txt
+      - run: npm ci && npm run build && npx playwright install --with-deps chromium
+        working-directory: platform/frontend
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+      - run: ./scripts/e2e.sh
+        working-directory: platform
+        env:
+          E2E_PYTHON: python
+          E2E_DATABASE_URL: postgresql+psycopg://trader:trader_local_only@127.0.0.1:5432/trading_e2e
+
+  docker:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: platform
+    steps:
+      - uses: actions/checkout@v4
+      - run: cp .env.example .env && sed -i 's/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=ci-build-only/' .env
+      - run: docker compose config --quiet
+      - run: docker compose build
